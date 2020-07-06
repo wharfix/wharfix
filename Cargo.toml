@@ -1,0 +1,21 @@
+[package]
+name = "wharfix"
+version = "0.1.0"
+authors = ["Johan Thomsen <jth@dbc.dk>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.33.0"
+serde = "1.0.100"
+serde_derive = "1.0.100"
+serde_json = "1.0.40"
+erased-serde = "0.3"
+time = { version = "0.1" }
+actix-web = "2.0"
+actix-rt = "1.1.1"
+tokio = { version = "0.2", features = [ "macros", "tcp" ] }
+futures = "0.3"
+uuid = { version = "0.8", features = ["v4"] }
+lazy_static = "1.4"
+git2 = "0.13"
+linereader = "0.4.0"
