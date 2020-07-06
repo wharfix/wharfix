@@ -14,13 +14,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::string::String;
 
-use actix_web::{App, HttpServer, Responder, web};
+use actix_web::{App, HttpServer, middleware, Responder, web, HttpRequest};
 
 use crate::actix_web::dev::Service;
 use actix_web::dev::{HttpResponseBuilder};
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use actix_web::web::Bytes;
 use std::process::{Command, Output};
 use crate::exec::{SpawnOk, CommandWrapped};
@@ -28,15 +28,19 @@ use crate::exec::Wait;
 use std::io::BufRead;
 use linereader::LineReader;
 use std::fs;
+use walkdir::WalkDir;
+use std::str::FromStr;
+use futures::StreamExt;
 
 
 mod exec;
 mod log;
-/*
+
 lazy_static! {
-    static ref STATE: RwLock<HashMap<String, Mutex<EndpointState>>> = RwLock::new(HashMap::new());
+    static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
 }
-*/
+
+static mut SERVE_ROOT: String = String::new();
 
 #[derive(Deserialize)]
 struct FetchInfo {
@@ -44,14 +48,19 @@ struct FetchInfo {
     reference: String
 }
 
+#[derive(Clone)]
+struct BlobInfo {
+    content_type: String,
+    path: PathBuf,
+}
+
 #[actix_rt::main]
 async fn main() {
 
     let args = clap::App::new("wharfix")
     .arg(clap::Arg::with_name("specs")
-        .long("specs")
+        .index(1)
         .help("Path to directory of docker image specs")
-        .takes_value(true)
         .required(true))
     .arg(clap::Arg::with_name("port")
         .long("port")
@@ -61,8 +70,17 @@ async fn main() {
 
     let m = args.get_matches();
     let listen_port: u16 = m.value_of("port").unwrap().parse().unwrap();
+    unsafe {
+        SERVE_ROOT = m.value_of("specs").unwrap().to_owned();
+    }
 
     listen(listen_port).await.unwrap()
+}
+
+fn get_serve_root() -> &'static String {
+    unsafe {
+        &SERVE_ROOT
+    }
 }
 
 async fn listen(listen_port: u16) -> std::io::Result<()>{
@@ -75,40 +93,65 @@ async fn listen(listen_port: u16) -> std::io::Result<()>{
                 log::data("request", &json!({ "endpoint": format!("{}", req.path()) }));
                 srv.call(req)
             })
-            //.route("/v2", web::get().to(version))
+            .wrap(middleware::Compress::default())
+            .route("/v2", web::get().to(version))
             .route("/v2/{name}/manifests/{reference}", web::get().to(manifest))
-            //.route("/v2/{name}/blobs/{reference}", web::get().to(blob))
+            .route("/v2/{name}/blobs/{reference}", web::get().to(blob))
     })
         .bind(format!("0.0.0.0:{listen_port}", listen_port=listen_port)).unwrap()
         .run()
         .await
 }
 
+async fn version() -> impl Responder {
+    HttpResponseBuilder::new(StatusCode::OK)
+        .header("Docker-Distribution-API-Version", "registry/2.0")
+        .finish()
+}
+
 async fn manifest(info: web::Path<FetchInfo>) -> impl Responder {
     let path = nix_build(&info.name).await.unwrap();
-    let fq = format!("{}/manifest.json", &path);
+    blob_discovery(&path).await;
+    let fq = path.join("manifest.json");
 
     HttpResponseBuilder::new(StatusCode::OK)
         .header("Docker-Distribution-API-Version", "registry/2.0")
         .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
         .body(&fs::read_to_string(&fq).unwrap())
-
-    /*let lock = STATE.read().unwrap();
-    match lock.get(&info.service) {
-        Some(c) => {
-            let mut state = c.lock().unwrap();
-            HttpResponseBuilder::new((*state).handle()).body(format!("{}", (*state).requests))
-        },
-        None => HttpResponseBuilder::new(StatusCode::NOT_FOUND).finish()
-    }*/
 }
 
-async fn nix_build(name: &String) -> Result<String, exec::ExecErrorInfo> {
+async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
+    let blob_info = {
+        let blobs = BLOBS.read().unwrap();
+        match blobs.get(&info.reference) {
+            Some(blob_info) => Some(blob_info.clone()),
+            None => None
+        }
+    };
+
+    match &blob_info {
+        Some(blob_info) => {
+            HttpResponseBuilder::new(StatusCode::OK)
+                .header("Docker-Distribution-API-Version", "registry/2.0")
+                .header("Content-Type", blob_info.content_type.as_str())
+                .body(fs::read(&blob_info.path).unwrap())
+        },
+        None => {
+            HttpResponseBuilder::new(StatusCode::NOT_FOUND)
+                .header("Docker-Distribution-API-Version", "registry/2.0")
+                .finish()
+        }
+    }
+
+
+}
+
+async fn nix_build(name: &String) -> Result<PathBuf, exec::ExecErrorInfo> {
     let mut cmd = Command::new("nix-build");
     let mut child = cmd
         .arg("--arg")
         .arg("specFile")
-        .arg(&format!("./examples/{name}.nix", name=name))
+        .arg(&format!("{root}/{name}.nix", root=get_serve_root(), name=name))
         .arg("drv.nix")
         .spawn_ok()?;
 
@@ -119,8 +162,25 @@ async fn nix_build(name: &String) -> Result<String, exec::ExecErrorInfo> {
         line_bytes = line.expect("read error").to_vec();
     }
 
-    let stringed = String::from_utf8(line_bytes.to_vec()).unwrap();
-    Ok(String::from(stringed.trim_end()))
+    let stringed = String::from_utf8(line_bytes).unwrap();
+    Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
+}
+
+async fn blob_discovery(path: &PathBuf) {
+    let search_path = path.join("blobs");
+    let mut blobs = BLOBS.write().unwrap();
+    for entry in WalkDir::new(&search_path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != search_path.as_path()) {
+        let file_name = entry.file_name().to_str().unwrap();
+        let parts: Vec<&str> = file_name.split('.').collect();
+        blobs.insert(format!("sha256:{digest}", digest=parts[0]), BlobInfo{
+            content_type: String::from(match parts[1] {
+                "tar" => "application/vnd.docker.image.rootfs.diff.tar",
+                "json" => "application/vnd.docker.container.image.v1+json",
+                _ => "application/octet-stream",
+            }),
+            path: entry.path().to_path_buf()
+        });
+    }
 }
 
 enum ImageBuildError {

@@ -21,14 +21,13 @@ pkgs.runCommand "${spec.name}-servable" { buildInputs = [pkgs.jq]; } ''
   MANIFESTJSON='{ "schemaVersion": 2, "mediaType": "application/vnd.docker.distribution.manifest.v2+json"'
   MANIFESTJSON="$MANIFESTJSON, "'"config": { "mediaType": "application/vnd.docker.container.image.v1+json", "digest": "sha256:'"$CONFSUM"'", "size": '"$CONFSIZE"' }, "layers": [] }'
 
-  for L in $(find $out/raw -name layer.tar); do
-    OUTNAME="$(basename $(dirname $L))"
+  for L in $(cat $out/raw/manifest.json |jq -r '.[].Layers[]'); do
+    OUTNAME="$(dirname $L)"
     OUTFILE="$out/raw/$OUTNAME.tar"
-    cp $L $OUTFILE
+    cp "$out/raw/$L" $OUTFILE
     OUTSIZE="$(wc -c $OUTFILE | awk '{ print $1 }')"
-    OUTSUM="$(sha256sum $OUTFILE | awk '{ print $1 }')"
-    ln -s "$OUTFILE" "$out/blobs/$OUTSUM.tar"
-    MANIFESTJSON=$(echo "$MANIFESTJSON" | jq '.layers += [{ "mediaType": "application/vnd.docker.image.rootfs.diff.tar", "digest": "sha256:'"$OUTSUM"'", "size": '"$OUTSIZE"' }]')
+    ln -s "$OUTFILE" "$out/blobs/$OUTNAME.tar"
+    MANIFESTJSON=$(echo "$MANIFESTJSON" | jq '.layers += [{ "mediaType": "application/vnd.docker.image.rootfs.diff.tar", "digest": "sha256:'"$OUTNAME"'", "size": '"$OUTSIZE"' }]')
   done
   echo "$MANIFESTJSON" >$out/manifest.json
 ''
