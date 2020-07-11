@@ -23,10 +23,8 @@ pkgs.runCommand "${spec.name}-servable" { buildInputs = [pkgs.jq]; } ''
 
   for L in $(cat $out/raw/manifest.json |jq -r '.[].Layers[]'); do
     OUTNAME="$(dirname $L)"
-    OUTFILE="$out/raw/$OUTNAME.tar"
-    cp "$out/raw/$L" $OUTFILE
-    OUTSIZE="$(wc -c $OUTFILE | awk '{ print $1 }')"
-    ln -s "$OUTFILE" "$out/blobs/$OUTNAME.tar"
+    OUTSIZE="$(wc -c $out/raw/$L | awk '{ print $1 }')"
+    ln -s "$out/raw/$L" "$out/blobs/$OUTNAME.tar"
     MANIFESTJSON=$(echo "$MANIFESTJSON" | jq '.layers += [{ "mediaType": "application/vnd.docker.image.rootfs.diff.tar", "digest": "sha256:'"$OUTNAME"'", "size": '"$OUTSIZE"' }]')
   done
   echo "$MANIFESTJSON" >$out/manifest.json
