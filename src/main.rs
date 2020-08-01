@@ -8,29 +8,18 @@ extern crate tokio;
 extern crate uuid;
 extern crate linereader;
 
-use std::sync::{Mutex, RwLock};
 use actix_web::http::StatusCode;
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::string::String;
 
-use actix_web::{App, HttpServer, middleware, Responder, web, HttpRequest};
+use actix_web::{App, HttpServer, middleware, Responder, web};
 
 use crate::actix_web::dev::Service;
 use actix_web::dev::{HttpResponseBuilder};
-use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use actix_web::web::Bytes;
-use std::process::{Command, Output};
-use crate::exec::{SpawnOk, CommandWrapped};
-use crate::exec::Wait;
-use std::io::BufRead;
-use linereader::LineReader;
+use std::path::{PathBuf};
 use std::fs;
 use walkdir::WalkDir;
 use std::str::FromStr;
-use futures::StreamExt;
 
 
 mod exec;
@@ -40,6 +29,7 @@ static mut SERVE_ROOT: String = String::new();
 
 #[derive(Deserialize)]
 struct FetchInfo {
+    #[allow(dead_code)]
     name: String,
     reference: String
 }
@@ -174,8 +164,8 @@ fn blob_discovery(path: &PathBuf) -> HashMap<String, BlobInfo> {
     blobs
 }
 
-
+#[allow(dead_code)]
 enum ImageBuildError {
-    NOT_FOUND,
-    OTHER
+    NotFound,
+    Other
 }
