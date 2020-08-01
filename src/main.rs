@@ -21,11 +21,13 @@ use std::fs;
 use walkdir::WalkDir;
 use std::str::FromStr;
 
+use crate::errors::MainError;
 
+mod errors;
 mod exec;
 mod log;
 
-static mut SERVE_ROOT: String = String::new();
+static mut SERVE_ROOT: Option<PathBuf> = None;
 
 #[derive(Deserialize)]
 struct FetchInfo {
@@ -40,8 +42,8 @@ struct BlobInfo {
     path: PathBuf,
 }
 
-#[actix_rt::main]
-async fn main() {
+
+fn main() {
 
     let args = clap::App::new("wharfix")
     .arg(clap::Arg::with_name("serve")
@@ -53,30 +55,43 @@ async fn main() {
         .long("address")
         .help("Listen address to open on <port>")
         .takes_value(true)
-        .required(true))
+        .required(false))
     .arg(clap::Arg::with_name("port")
         .long("port")
         .help("Listen port to open on <address>")
         .takes_value(true)
         .required(true));
 
-    let m = args.get_matches();
-    let listen_address: &str = m.value_of("address").unwrap();
-    let listen_port: u16 = m.value_of("port").unwrap().parse().unwrap();
-    unsafe {
-        SERVE_ROOT = m.value_of("serve").unwrap().to_owned();
-    }
+    if let Err(e) = || -> Result<(), MainError> {
 
-    listen(listen_address, listen_port).await.unwrap()
+        let m = args.get_matches();
+        let listen_address = m.value_of("address")
+            .unwrap_or("0.0.0.0").to_string();
+        let listen_port: u16 = m.value_of("port")
+            .ok_or(MainError::ArgParseError("Missing cmdline arg 'port'"))?.parse()
+            .or(Err(MainError::ArgParseError("cmdline arg 'port' doesn't look like a port number")))?;
+        unsafe {
+            SERVE_ROOT = Some(PathBuf::from_str(m.value_of("serve")
+                .ok_or(MainError::ArgParseError("Missing cmdline arg 'serve'"))?)
+                .or(Err(MainError::ArgParseError("cmdline arg 'serve' doesn't look like a valid path")))?);
+        }
+
+        listen(listen_address, listen_port)
+            .or_else(|e| Err(MainError::ListenBindError(e)))
+
+    }() {
+        log::error("startup error", &e);
+    }
 }
 
-fn get_serve_root() -> &'static String {
+fn get_serve_root() -> &'static PathBuf {
     unsafe {
-        &SERVE_ROOT
+        &SERVE_ROOT.as_ref().unwrap() // will never be None
     }
 }
 
-async fn listen(listen_address: &str, listen_port: u16) -> std::io::Result<()>{
+#[actix_rt::main]
+async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>{
     log::info(&format!("start listening on port: {}", listen_port));
 
     HttpServer::new(|| {
@@ -91,7 +106,7 @@ async fn listen(listen_address: &str, listen_port: u16) -> std::io::Result<()>{
             .route("/v2/{name}/manifests/{reference}", web::get().to(manifest))
             .route("/v2/{name}/blobs/{reference}", web::get().to(blob))
     })
-        .bind(format!("{listen_address}:{listen_port}", listen_address=listen_address, listen_port=listen_port)).unwrap()
+        .bind(format!("{listen_address}:{listen_port}", listen_address=listen_address, listen_port=listen_port))?
         .run()
         .await
 }
@@ -103,14 +118,20 @@ async fn version() -> impl Responder {
 }
 
 async fn manifest(info: web::Path<FetchInfo>) -> impl Responder {
-    let path = PathBuf::from_str(get_serve_root().as_str()).unwrap();
+    let path = get_serve_root();
     let fq: PathBuf = path.join("tags").join(&info.reference).join("manifest.json");
 
     if fq.exists() {
-        HttpResponseBuilder::new(StatusCode::OK)
-            .header("Docker-Distribution-API-Version", "registry/2.0")
-            .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
-            .body(&fs::read_to_string(&fq).unwrap())
+        match fs::read_to_string(&fq) {
+            Ok(manifest) => HttpResponseBuilder::new(StatusCode::OK)
+                        .header("Docker-Distribution-API-Version", "registry/2.0")
+                        .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+                        .body(&manifest),
+            Err(e) => {
+                log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
+                HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish()
+            }
+        }
     } else {
         HttpResponseBuilder::new(StatusCode::NOT_FOUND).header("Docker-Distribution-API-Version", "registry/2.0").finish()
     }
@@ -119,7 +140,7 @@ async fn manifest(info: web::Path<FetchInfo>) -> impl Responder {
 async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
     lazy_static! {
         static ref BLOBS: HashMap<String, BlobInfo> = {
-            let search_path = PathBuf::from_str(get_serve_root().as_str()).unwrap().join("blobs");
+            let search_path = get_serve_root().join("blobs");
             blob_discovery(&search_path)
         };
     }
@@ -132,10 +153,18 @@ async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
 
     match blob_info {
         Some(blob_info) => {
-            HttpResponseBuilder::new(StatusCode::OK)
-                .header("Docker-Distribution-API-Version", "registry/2.0")
-                .header("Content-Type", blob_info.content_type.as_str())
-                .body(fs::read(&blob_info.path).unwrap())
+            match fs::read(&blob_info.path) {
+                Ok(blob) => {
+                    HttpResponseBuilder::new(StatusCode::OK)
+                        .header("Docker-Distribution-API-Version", "registry/2.0")
+                        .header("Content-Type", blob_info.content_type.as_str())
+                        .body(blob)
+                },
+                Err(e) => {
+                    log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
+                    HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish()
+                }
+            }
         },
         None => {
             HttpResponseBuilder::new(StatusCode::NOT_FOUND)
@@ -150,22 +179,17 @@ async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
 fn blob_discovery(path: &PathBuf) -> HashMap<String, BlobInfo> {
     let mut blobs = HashMap::new();
     for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path.as_path()) {
-        let file_name = entry.file_name().to_str().unwrap();
-        let parts: Vec<&str> = file_name.split('.').collect();
-        blobs.insert(format!("sha256:{digest}", digest=parts[0]), BlobInfo{
-            content_type: String::from(match parts[1] {
-                "tar" => "application/vnd.docker.image.rootfs.diff.tar",
-                "json" => "application/vnd.docker.container.image.v1+json",
-                _ => "application/octet-stream",
-            }),
-            path: entry.path().to_path_buf()
-        });
+        if let Some(file_name) = entry.file_name().to_str() {
+            let parts: Vec<&str> = file_name.split('.').collect();
+            blobs.insert(format!("sha256:{digest}", digest=parts[0]), BlobInfo{
+                content_type: String::from(match parts[1] {
+                    "tar" => "application/vnd.docker.image.rootfs.diff.tar",
+                    "json" => "application/vnd.docker.container.image.v1+json",
+                    _ => "application/octet-stream",
+                }),
+                path: entry.path().to_path_buf()
+            });
+        }
     }
     blobs
-}
-
-#[allow(dead_code)]
-enum ImageBuildError {
-    NotFound,
-    Other
 }
