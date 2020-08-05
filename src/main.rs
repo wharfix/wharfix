@@ -98,10 +98,11 @@ fn main() {
             .ok_or(MainError::ArgParse("Missing cmdline arg 'port'"))?.parse()
             .or(Err(MainError::ArgParse("cmdline arg 'port' doesn't look like a port number")))?;
 
+        let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
         let serve_type = Some(match m {
            m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
-           m if m.is_present("repo") => ServeType::Repo(repo_clone(m.value_of("repo").unwrap())
+           m if m.is_present("repo") => ServeType::Repo(repo_clone(m.value_of("repo").unwrap(), &tmp_dir)
                .or_else(|e| Err(MainError::RepoClone(e)))?),
            _ => panic!("clap should ensure this never happens")
         });
@@ -256,13 +257,11 @@ async fn nix_build<'l>(info: &FetchInfo) -> Result<PathBuf, exec::ExecErrorInfo>
     Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
 }
 
-fn repo_clone(url: &str) -> Result<Repository, RepoError> {
-    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e))))?;
-    Ok(Repository::clone(url, &tmp_dir).or_else(|e| Err(RepoError::Git(Box::new(e))))?)
+fn repo_clone(url: &str, tmp_dir: &TempDir) -> Result<Repository, RepoError> {
+    Ok(Repository::clone(url, tmp_dir).or_else(|e| Err(RepoError::Git(Box::new(e))))?)
 }
 
 fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Result<(), RepoError> {
-    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e))))?;
     let tmp_path = tmp_dir.path();
 
     let mut cb = CheckoutBuilder::new();
@@ -270,7 +269,10 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Re
     cb.update_index(false);
     cb.target_dir(tmp_path);
 
-    let obj = repo.revparse_single(reference.as_str()).or_else(|e| Err(RepoError::Git(Box::new(e))))?;
+    let obj = repo.revparse_single(reference.as_str()).or_else(|_| {
+        let rev = format!("refs/remotes/origin/{reference}",reference=&reference);
+        repo.revparse_single(rev.as_str()).or_else(|e| Err(RepoError::Git(Box::new(e))))
+    })?;
     repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(Box::new(e))))?;
     Ok(())
 }
