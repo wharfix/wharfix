@@ -7,6 +7,8 @@ extern crate time;
 extern crate tokio;
 extern crate uuid;
 extern crate linereader;
+extern crate tempdir;
+
 
 use actix_web::http::StatusCode;
 use std::collections::HashMap;
@@ -21,13 +23,30 @@ use std::fs;
 use walkdir::WalkDir;
 use std::str::FromStr;
 
-use crate::errors::MainError;
+use crate::errors::{MainError, RepoError};
+
+use tempdir::TempDir;
+use git2::Repository;
+
+use std::process::{Command, Output};
+use crate::exec::{SpawnOk, CommandWrapped};
+use crate::exec::Wait;
+use std::io::BufRead;
+use linereader::LineReader;
+
+use std::sync::RwLock;
+use git2::build::CheckoutBuilder;
+use std::path::Path;
 
 mod errors;
 mod exec;
 mod log;
 
-static mut SERVE_ROOT: Option<PathBuf> = None;
+static mut SERVE_TYPE: Option<ServeType> = None;
+
+lazy_static! {
+    static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
+}
 
 #[derive(Deserialize)]
 struct FetchInfo {
@@ -42,51 +61,72 @@ struct BlobInfo {
     path: PathBuf,
 }
 
+enum ServeType {
+    Repo(Repository),
+    Path(PathBuf),
+}
 
 fn main() {
 
     let args = clap::App::new("wharfix")
-    .arg(clap::Arg::with_name("serve")
-        .long("serve")
-        .help("Path to directory of docker image specs")
+    .arg(clap::Arg::with_name("path")
+        .long("path")
+        .help("Path to directory of static docker image specs")
         .takes_value(true)
-        .required(true))
+        .required_unless("repo"))
+    .arg(clap::Arg::with_name("repo")
+        .long("repo")
+        .help("URL to git repository")
+        .takes_value(true)
+        .required_unless("path"))
     .arg(clap::Arg::with_name("address")
         .long("address")
         .help("Listen address to open on <port>")
-        .takes_value(true)
+        .default_value("0.0.0.0")
         .required(false))
     .arg(clap::Arg::with_name("port")
         .long("port")
         .help("Listen port to open on <address>")
-        .takes_value(true)
+        .default_value("8088")
         .required(true));
 
     if let Err(e) = || -> Result<(), MainError> {
 
         let m = args.get_matches();
-        let listen_address = m.value_of("address")
-            .unwrap_or("0.0.0.0").to_string();
+        let listen_address = m.value_of("address").unwrap().to_string();
         let listen_port: u16 = m.value_of("port")
-            .ok_or(MainError::ArgParseError("Missing cmdline arg 'port'"))?.parse()
-            .or(Err(MainError::ArgParseError("cmdline arg 'port' doesn't look like a port number")))?;
+            .ok_or(MainError::ArgParse("Missing cmdline arg 'port'"))?.parse()
+            .or(Err(MainError::ArgParse("cmdline arg 'port' doesn't look like a port number")))?;
+
+        let serve_type = Some(match m {
+           m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
+               .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
+           m if m.is_present("repo") => ServeType::Repo(repo_clone(m.value_of("repo").unwrap())
+               .or_else(|e| Err(MainError::RepoClone(e)))?),
+           _ => panic!("clap should ensure this never happens")
+        });
+
         unsafe {
-            SERVE_ROOT = Some(PathBuf::from_str(m.value_of("serve")
-                .ok_or(MainError::ArgParseError("Missing cmdline arg 'serve'"))?)
-                .or(Err(MainError::ArgParseError("cmdline arg 'serve' doesn't look like a valid path")))?);
+            SERVE_TYPE = serve_type;
         }
 
         listen(listen_address, listen_port)
-            .or_else(|e| Err(MainError::ListenBindError(e)))
+            .or_else(|e| Err(MainError::ListenBind(e)))
 
     }() {
         log::error("startup error", &e);
     }
 }
 
-fn get_serve_root() -> &'static PathBuf {
+fn get_serve_root<'l>(info: &FetchInfo, tmp_dir: Option<&'l TempDir>) -> PathBuf {
     unsafe {
-        &SERVE_ROOT.as_ref().unwrap() // will never be None
+        match SERVE_TYPE.as_ref().unwrap() { // will never be None
+            ServeType::Path(p) => p.clone(),
+            ServeType::Repo(r) => {
+                repo_checkout(&r, &info.reference, tmp_dir.unwrap()).unwrap();
+                tmp_dir.unwrap().path().to_path_buf()
+            }
+        }
     }
 }
 
@@ -118,15 +158,19 @@ async fn version() -> impl Responder {
 }
 
 async fn manifest(info: web::Path<FetchInfo>) -> impl Responder {
-    let path = get_serve_root();
-    let fq: PathBuf = path.join("tags").join(&info.reference).join("manifest.json");
+    let path = nix_build(&info).await.unwrap();
+    let fq: PathBuf = path.join("manifest.json");
 
     if fq.exists() {
         match fs::read_to_string(&fq) {
-            Ok(manifest) => HttpResponseBuilder::new(StatusCode::OK)
-                        .header("Docker-Distribution-API-Version", "registry/2.0")
-                        .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
-                        .body(&manifest),
+            Ok(manifest) => {
+                    blob_discovery(&path.join("blobs"));
+
+                    HttpResponseBuilder::new(StatusCode::OK)
+                            .header("Docker-Distribution-API-Version", "registry/2.0")
+                            .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+                            .body(&manifest)
+            },
             Err(e) => {
                 log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
                 HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish()
@@ -138,14 +182,8 @@ async fn manifest(info: web::Path<FetchInfo>) -> impl Responder {
 }
 
 async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
-    lazy_static! {
-        static ref BLOBS: HashMap<String, BlobInfo> = {
-            let search_path = get_serve_root().join("blobs");
-            blob_discovery(&search_path)
-        };
-    }
     let blob_info = {
-        match BLOBS.get(&info.reference) {
+        match BLOBS.read().unwrap().get(&info.reference) {
             Some(blob_info) => Some(blob_info.clone()),
             None => None
         }
@@ -176,12 +214,11 @@ async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
 
 }
 
-fn blob_discovery(path: &PathBuf) -> HashMap<String, BlobInfo> {
-    let mut blobs = HashMap::new();
+fn blob_discovery(path: &PathBuf) {
     for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path.as_path()) {
         if let Some(file_name) = entry.file_name().to_str() {
             let parts: Vec<&str> = file_name.split('.').collect();
-            blobs.insert(format!("sha256:{digest}", digest=parts[0]), BlobInfo{
+            BLOBS.write().unwrap().insert(format!("sha256:{digest}", digest=parts[0]), BlobInfo{
                 content_type: String::from(match parts[1] {
                     "tar" => "application/vnd.docker.image.rootfs.diff.tar",
                     "json" => "application/vnd.docker.container.image.v1+json",
@@ -191,5 +228,49 @@ fn blob_discovery(path: &PathBuf) -> HashMap<String, BlobInfo> {
             });
         }
     }
-    blobs
+}
+
+async fn nix_build<'l>(info: &FetchInfo) -> Result<PathBuf, exec::ExecErrorInfo> {
+    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
+    let path = get_serve_root(&info, Some(&tmp_dir));
+    let fq: PathBuf = path.join("default.nix");
+
+    let mut cmd = Command::new("nix-build");
+    let mut child = cmd
+        .arg("--arg")
+        .arg("indexFile")
+        .arg(&fq.to_str().unwrap())
+        .arg("drv.nix")
+        .arg("-A")
+        .arg(&info.name)
+        .spawn_ok()?;
+
+    let out: Output = child.wait_for_output()?;
+    let mut line_bytes = vec!();
+    let mut reader = LineReader::new(&out.stdout[..]);
+    while let Some(line) = reader.next_line() {
+        line_bytes = line.expect("read error").to_vec();
+    }
+
+    let stringed = String::from_utf8(line_bytes).unwrap();
+    Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
+}
+
+fn repo_clone(url: &str) -> Result<Repository, RepoError> {
+    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e))))?;
+    Ok(Repository::clone(url, &tmp_dir).or_else(|e| Err(RepoError::Git(Box::new(e))))?)
+}
+
+fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Result<(), RepoError> {
+    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e))))?;
+    let tmp_path = tmp_dir.path();
+
+    let mut cb = CheckoutBuilder::new();
+    cb.force();
+    cb.update_index(false);
+    cb.target_dir(tmp_path);
+
+    let obj = repo.revparse_single(reference.as_str()).or_else(|e| Err(RepoError::Git(Box::new(e))))?;
+    repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(Box::new(e))))?;
+    Ok(())
 }
