@@ -232,16 +232,23 @@ fn blob_discovery(path: &PathBuf) {
 }
 
 async fn nix_build<'l>(info: &FetchInfo) -> Result<PathBuf, exec::ExecErrorInfo> {
+    use tempfile::NamedTempFile;
+    use std::io::{self, Write};
+
     let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
     let path = get_serve_root(&info, Some(&tmp_dir));
     let fq: PathBuf = path.join("default.nix");
 
+    let mut drv_file = NamedTempFile::new().unwrap();
+    drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
+
     let mut cmd = Command::new("nix-build");
     let mut child = cmd
+        .arg("--no-out-link")
         .arg("--arg")
         .arg("indexFile")
         .arg(&fq.to_str().unwrap())
-        .arg("drv.nix")
+        .arg(&drv_file.path())
         .arg("-A")
         .arg(&info.name)
         .spawn_ok()?;
