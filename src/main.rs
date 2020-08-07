@@ -120,10 +120,16 @@ fn main() {
 }
 
 fn get_serve_root<'l>(info: &FetchInfo, tmp_dir: Option<&'l TempDir>) -> PathBuf {
+    use git2::{FetchPrune, FetchOptions};
+
     unsafe {
         match SERVE_TYPE.as_ref().unwrap() { // will never be None
             ServeType::Path(p) => p.clone(),
             ServeType::Repo(r) => {
+                let refs: &[&str] = &[];
+                let mut fo = FetchOptions::new();
+                fo.prune(FetchPrune::On);
+                r.find_remote("origin").unwrap().fetch(refs, Some(&mut fo), None);
                 repo_checkout(&r, &info.reference, tmp_dir.unwrap()).unwrap();
                 tmp_dir.unwrap().path().to_path_buf()
             }
