@@ -119,21 +119,21 @@ fn main() {
     }
 }
 
-fn get_serve_root<'l>(info: &FetchInfo, tmp_dir: Option<&'l TempDir>) -> PathBuf {
+fn get_serve_root<'l>(info: &FetchInfo, tmp_dir: &'l TempDir) -> Result<PathBuf, RepoError> {
     use git2::{FetchPrune, FetchOptions};
 
     unsafe {
-        match SERVE_TYPE.as_ref().unwrap() { // will never be None
+        Ok(match SERVE_TYPE.as_ref().unwrap() { // will never be None
             ServeType::Path(p) => p.clone(),
             ServeType::Repo(r) => {
                 let refs: &[&str] = &[];
                 let mut fo = FetchOptions::new();
                 fo.prune(FetchPrune::On);
                 r.find_remote("origin").unwrap().fetch(refs, Some(&mut fo), None);
-                repo_checkout(&r, &info.reference, tmp_dir.unwrap()).unwrap();
-                tmp_dir.unwrap().path().to_path_buf()
+                repo_checkout(&r, &info.reference, tmp_dir)?;
+                tmp_dir.path().to_path_buf()
             }
-        }
+        })
     }
 }
 
@@ -165,26 +165,34 @@ async fn version() -> impl Responder {
 }
 
 async fn manifest(info: web::Path<FetchInfo>) -> impl Responder {
-    let path = nix_build(&info).await.unwrap();
-    let fq: PathBuf = path.join("manifest.json");
+    let not_found = HttpResponseBuilder::new(StatusCode::NOT_FOUND).header("Docker-Distribution-API-Version", "registry/2.0").finish();
+    let internal_error = HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish();
 
-    if fq.exists() {
-        match fs::read_to_string(&fq) {
-            Ok(manifest) => {
-                    blob_discovery(&path.join("blobs"));
-
-                    HttpResponseBuilder::new(StatusCode::OK)
-                            .header("Docker-Distribution-API-Version", "registry/2.0")
-                            .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
-                            .body(&manifest)
-            },
-            Err(e) => {
-                log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
-                HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish()
+    match nix_build(&info).await {
+        Ok(path) => {
+            let fq: PathBuf = path.join("manifest.json");
+            match fs::read_to_string(&fq) {
+                Ok(manifest) => {
+                        blob_discovery(&path.join("blobs"));
+                        HttpResponseBuilder::new(StatusCode::OK)
+                                .header("Docker-Distribution-API-Version", "registry/2.0")
+                                .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+                                .body(&manifest)
+                },
+                Err(e) => {
+                    log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
+                    return internal_error;
+                }
             }
+        },
+        Err(RepoError::Git(git2::ErrorCode::NotFound)) => {
+            log::info(&format!("git ref: {reference} not found for image: {name}", name=info.name, reference=info.reference));
+            return not_found;
+        },
+        Err(e) => {
+            log::error(&format!("unknown error for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
+            return internal_error;
         }
-    } else {
-        HttpResponseBuilder::new(StatusCode::NOT_FOUND).header("Docker-Distribution-API-Version", "registry/2.0").finish()
     }
 }
 
@@ -237,12 +245,12 @@ fn blob_discovery(path: &PathBuf) {
     }
 }
 
-async fn nix_build<'l>(info: &FetchInfo) -> Result<PathBuf, exec::ExecErrorInfo> {
+async fn nix_build<'l>(info: &FetchInfo) -> Result<PathBuf, RepoError> {
     use tempfile::NamedTempFile;
     use std::io::{self, Write};
 
     let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
-    let path = get_serve_root(&info, Some(&tmp_dir));
+    let path = get_serve_root(&info, &tmp_dir)?;
     let fq: PathBuf = path.join("default.nix");
 
     let mut drv_file = NamedTempFile::new().unwrap();
@@ -271,7 +279,7 @@ async fn nix_build<'l>(info: &FetchInfo) -> Result<PathBuf, exec::ExecErrorInfo>
 }
 
 fn repo_clone(url: &str, tmp_dir: &TempDir) -> Result<Repository, RepoError> {
-    Ok(Repository::clone(url, tmp_dir).or_else(|e| Err(RepoError::Git(Box::new(e))))?)
+    Ok(Repository::clone(url, tmp_dir).or_else(|e| Err(RepoError::Git(e.code())))?)
 }
 
 fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Result<(), RepoError> {
@@ -284,8 +292,8 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Re
 
     let obj = repo.revparse_single(reference.as_str()).or_else(|_| {
         let rev = format!("refs/remotes/origin/{reference}",reference=&reference);
-        repo.revparse_single(rev.as_str()).or_else(|e| Err(RepoError::Git(Box::new(e))))
+        repo.revparse_single(rev.as_str()).or_else(|e| Err(RepoError::Git(e.code())))
     })?;
-    repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(Box::new(e))))?;
+    repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(e.code())))?;
     Ok(())
 }
