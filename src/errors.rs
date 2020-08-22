@@ -27,3 +27,10 @@ impl std::convert::From<ExecErrorInfo> for RepoError {
         RepoError::Exec(err)
     }
 }
+
+
+impl std::convert::From<RepoError> for actix_web::error::Error {
+    fn from(err: RepoError) -> Self {
+        actix_web::error::ErrorInternalServerError("repo error")
+    }
+}
