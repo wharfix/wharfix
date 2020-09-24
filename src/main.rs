@@ -102,7 +102,7 @@ impl ServeType {
         Ok(match serve_type {
               ServeType::Database(pool) => {
                   let mut conn = pool.get_conn().or(Err(ErrorInternalServerError("data connection error")))?;
-                  let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name", params! { name }).or(Err(ErrorInternalServerError("data query error")))?;
+                  let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name AND enabled = true AND destroyed IS NULL", params! { name }).or(Err(ErrorInternalServerError("data query error")))?;
                   let (repo_url) = res.ok_or(ErrorNotFound("registry not found"))?;
                   Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, &repo_url)?) }
               },
@@ -372,6 +372,7 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     Ok(if clone_target.exists() {
         Repository::open_bare(&clone_target).or_else(|e| Err(RepoError::Git(e.code())))
     } else {
+        log::info(&format!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target));
         let mut rb = RepoBuilder::new();
         rb.bare(true);
         rb.clone(url, &clone_target).or_else(|e| Err(RepoError::Git(e.code())))
