@@ -12,7 +12,7 @@ pub enum ImageBuildError {
 pub enum MainError {
     ArgParse(&'static str),
     ListenBind(std::io::Error),
-    RepoClone(RepoError)
+    //RepoClone(RepoError)
 }
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl std::convert::From<ExecErrorInfo> for RepoError {
 
 
 impl std::convert::From<RepoError> for actix_web::error::Error {
-    fn from(err: RepoError) -> Self {
+    fn from(_err: RepoError) -> Self {
         actix_web::error::ErrorInternalServerError("repo error")
     }
 }

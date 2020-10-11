@@ -31,20 +31,17 @@ use tempdir::TempDir;
 use git2::Repository;
 
 use std::process::{Command, Output};
-use crate::exec::{SpawnOk, CommandWrapped};
+use crate::exec::SpawnOk;
 use crate::exec::Wait;
-use std::io::BufRead;
 use linereader::LineReader;
 
 use std::sync::RwLock;
 use git2::build::CheckoutBuilder;
-use std::path::Path;
 
 use futures::future::{ok, err, Ready};
 
 use regex::Regex;
-use mysql::{FromRowError,Pool,Row};
-use mysql::prelude::FromRow;
+use mysql::Pool;
 use crate::mysql::prelude::Queryable;
 
 mod errors;
@@ -83,13 +80,13 @@ enum Delivery {
 }
 
 struct Registry {
-  name: String,
-  delivery: Delivery,
+    #[allow(dead_code)]
+    name: String,
+    delivery: Delivery,
 }
 
 impl ServeType {
     fn to_registry(host: &str) -> Result<Registry, actix_web::error::Error> {
-        use actix_web::ResponseError;
         lazy_static! {
             static ref RE: Regex = Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?").unwrap();
         }
@@ -103,7 +100,7 @@ impl ServeType {
               ServeType::Database(pool) => {
                   let mut conn = pool.get_conn().or(Err(ErrorInternalServerError("data connection error")))?;
                   let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name AND enabled = true AND destroyed IS NULL", params! { name }).or(Err(ErrorInternalServerError("data query error")))?;
-                  let (repo_url) = res.ok_or(ErrorNotFound("registry not found"))?;
+                  let repo_url = res.ok_or(ErrorNotFound("registry not found"))?;
                   Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, &repo_url)?) }
               },
               ServeType::Repo(repo_url) => Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, repo_url)?) },
@@ -117,7 +114,7 @@ impl FromRequest for Registry {
     type Future = Ready<Result<Self, Self::Error>>;
     type Config = ();
 
-    fn from_request(req: &HttpRequest, payload: &mut actix_web::dev::Payload) -> Self::Future {
+    fn from_request(req: &HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
         let host = req.headers().get("HOST").and_then(|hv| hv.to_str().ok()).unwrap_or("");
         match ServeType::to_registry(host) {
             Ok(r) => ok(r),
@@ -206,7 +203,7 @@ fn get_serve_root<'l>(registry: &Registry, info: &FetchInfo, tmp_dir: &'l TempDi
     use git2::{FetchPrune, FetchOptions};
 
     Ok(match &registry.delivery {
-        Delivery::Repo(r) => { 
+        Delivery::Repo(r) => {
             let refs: &[&str] = &[];
             let mut fo = FetchOptions::new();
             fo.prune(FetchPrune::On);
@@ -221,8 +218,6 @@ fn get_serve_root<'l>(registry: &Registry, info: &FetchInfo, tmp_dir: &'l TempDi
 
 #[actix_rt::main]
 async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>{
-    use actix_web::HttpMessage;
-    use actix_web::http::header::HeaderValue;
     log::info(&format!("start listening on port: {}", listen_port));
 
     HttpServer::new(|| {
@@ -243,7 +238,7 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
         .await
 }
 
-async fn version(registry: Registry) -> impl Responder {
+async fn version(_registry: Registry) -> impl Responder {
     HttpResponseBuilder::new(StatusCode::OK)
         .header("Docker-Distribution-API-Version", "registry/2.0")
         .finish()
@@ -332,7 +327,7 @@ fn blob_discovery(path: &PathBuf) {
 
 async fn nix_build<'l>(registry: &Registry, info: &FetchInfo) -> Result<PathBuf, RepoError> {
     use tempfile::NamedTempFile;
-    use std::io::{self, Write};
+    use std::io::Write;
 
     let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
     let path = get_serve_root(&registry, &info, &tmp_dir)?;
