@@ -15,8 +15,7 @@ use actix_web::http::StatusCode;
 use std::collections::HashMap;
 use std::string::String;
 
-use actix_web::{App, HttpServer, middleware, Responder, web, FromRequest, HttpRequest, Error};
-use actix_web::error::{ErrorBadRequest, ErrorInternalServerError, ErrorNotFound};
+use actix_web::{App, HttpServer, middleware, Responder, web, FromRequest, HttpRequest, HttpResponse, Error};
 
 use crate::actix_web::dev::Service;
 use actix_web::dev::{HttpResponseBuilder};
@@ -25,7 +24,7 @@ use std::fs;
 use walkdir::WalkDir;
 use std::str::FromStr;
 
-use crate::errors::{MainError, RepoError};
+use crate::errors::{MainError, RepoError, DockerErrorContext};
 
 use tempdir::TempDir;
 use git2::Repository;
@@ -55,11 +54,11 @@ lazy_static! {
     static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
 }
 
-#[derive(Deserialize)]
-struct FetchInfo {
+#[derive(Clone, Deserialize)]
+pub struct FetchInfo {
     #[allow(dead_code)]
-    name: String,
-    reference: String
+    pub name: String,
+    pub reference: String
 }
 
 #[derive(Clone)]
@@ -85,32 +84,34 @@ struct Registry {
     delivery: Delivery,
 }
 
+use crate::errors::{DockerError};
+
 impl ServeType {
-    fn to_registry(host: &str) -> Result<Registry, actix_web::error::Error> {
+    fn to_registry(host: &str) -> Result<Registry, DockerError> {
         lazy_static! {
             static ref RE: Regex = Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?").unwrap();
         }
 
         let serve_type = unsafe {
-            SERVE_TYPE.as_ref().ok_or(ErrorInternalServerError("serve type unwrap error, this shouldn't happen :("))
+            SERVE_TYPE.as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))
         }?;
-        let name = RE.captures(host).and_then(|c| c.get(1)).ok_or(ErrorBadRequest("registry name malformed"))?.as_str();
+        let name = RE.captures(host).and_then(|c| c.get(1)).ok_or(DockerError::repository_name_malformed())?.as_str();
 
         Ok(match serve_type {
               ServeType::Database(pool) => {
-                  let mut conn = pool.get_conn().or(Err(ErrorInternalServerError("data connection error")))?;
-                  let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name AND enabled = true AND destroyed IS NULL", params! { name }).or(Err(ErrorInternalServerError("data query error")))?;
-                  let repo_url = res.ok_or(ErrorNotFound("registry not found"))?;
-                  Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, &repo_url)?) }
+                  let mut conn = pool.get_conn().or_else(|e| Err(DockerError::unknown("failed to get database connection", e)))?;
+                  let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name AND enabled = true AND destroyed IS NULL", params! { name }).or_else(|e| Err(DockerError::unknown("database query error", e)))?;
+                  let repo_url = res.ok_or(DockerError::repository_unknown())?;
+                  Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, &repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) }
               },
-              ServeType::Repo(repo_url) => Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, repo_url)?) },
+              ServeType::Repo(repo_url) => Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) },
               ServeType::Path(path) => Registry { name: name.to_string(), delivery: Delivery::Path(path.clone()) }
         })
     }
 }
 
 impl FromRequest for Registry {
-    type Error = Error;
+    type Error = DockerError;
     type Future = Ready<Result<Self, Self::Error>>;
     type Config = ();
 
@@ -172,7 +173,7 @@ fn main() {
                 std::io::ErrorKind::AlreadyExists => Ok(()),
                 e => panic!(format!("couldn't create target dir: {:?}, error: {:?}", target_dir, e))
             }
-        });
+        }).unwrap();
 
         let serve_type = Some(match m {
            m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
@@ -207,7 +208,7 @@ fn get_serve_root<'l>(registry: &Registry, info: &FetchInfo, tmp_dir: &'l TempDi
             let refs: &[&str] = &[];
             let mut fo = FetchOptions::new();
             fo.prune(FetchPrune::On);
-            r.find_remote("origin").unwrap().fetch(refs, Some(&mut fo), None);
+            r.find_remote("origin")?.fetch(refs, Some(&mut fo), None)?;
             repo_checkout(&r, &info.reference, tmp_dir)?;
             tmp_dir.path().to_path_buf()
         },
@@ -244,9 +245,23 @@ async fn version(_registry: Registry) -> impl Responder {
         .finish()
 }
 
-async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> impl Responder {
-    let not_found = HttpResponseBuilder::new(StatusCode::NOT_FOUND).header("Docker-Distribution-API-Version", "registry/2.0").finish();
-    let internal_error = HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish();
+struct WharfixManifest(String);
+
+impl Responder for WharfixManifest {
+    type Error = Error;
+    type Future = Ready<Result<HttpResponse, Error>>;
+
+    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
+        use futures::future::ready;
+
+        ready(Ok(HttpResponse::Ok()
+            .header("Docker-Distribution-API-Version", "registry/2.0")
+            .content_type("application/vnd.docker.distribution.manifest.v2+json")
+            .body(&self.0)))
+    }
+}
+
+async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixManifest, DockerError> {
 
     match nix_build(&registry, &info).await {
         Ok(path) => {
@@ -254,29 +269,39 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> impl Respon
             match fs::read_to_string(&fq) {
                 Ok(manifest) => {
                         blob_discovery(&path.join("blobs"));
-                        HttpResponseBuilder::new(StatusCode::OK)
-                                .header("Docker-Distribution-API-Version", "registry/2.0")
-                                .header("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
-                                .body(&manifest)
+                        Ok(WharfixManifest(manifest))
                 },
                 Err(e) => {
                     log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
-                    return internal_error;
+                    Err(e.manifest_context())
                 }
             }
         },
-        Err(RepoError::Git(git2::ErrorCode::NotFound)) => {
-            log::info(&format!("git ref: {reference} not found for image: {name}", name=info.name, reference=info.reference));
-            return not_found;
-        },
-        Err(e) => {
-            log::error(&format!("unknown error for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
-            return internal_error;
-        }
+        Err(e) => Err(e.manifest_context())
     }
 }
 
-async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
+struct WharfixBlob {
+    blob: Vec<u8>,
+    content_type: String
+}
+
+impl Responder for WharfixBlob {
+    type Error = Error;
+    type Future = Ready<Result<HttpResponse, Error>>;
+
+    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
+        use futures::future::ready;
+
+        ready(Ok(HttpResponse::Ok()
+            .header("Docker-Distribution-API-Version", "registry/2.0")
+            .content_type(self.content_type.as_str())
+            .body(self.blob)))
+    }
+}
+
+
+async fn blob(info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
     let blob_info = {
         match BLOBS.read().unwrap().get(&info.reference) {
             Some(blob_info) => Some(blob_info.clone()),
@@ -287,22 +312,18 @@ async fn blob(info: web::Path<FetchInfo>) -> impl Responder {
     match blob_info {
         Some(blob_info) => {
             match fs::read(&blob_info.path) {
-                Ok(blob) => {
-                    HttpResponseBuilder::new(StatusCode::OK)
-                        .header("Docker-Distribution-API-Version", "registry/2.0")
-                        .header("Content-Type", blob_info.content_type.as_str())
-                        .body(blob)
-                },
+                Ok(blob) => Ok(WharfixBlob{
+                    content_type: blob_info.content_type.clone(),
+                    blob
+                }),
                 Err(e) => {
                     log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
-                    HttpResponseBuilder::new(StatusCode::INTERNAL_SERVER_ERROR).header("Docker-Distribution-API-Version", "registry/2.0").finish()
+                    Err(e.blob_context())
                 }
             }
         },
         None => {
-            HttpResponseBuilder::new(StatusCode::NOT_FOUND)
-                .header("Docker-Distribution-API-Version", "registry/2.0")
-                .finish()
+            Err(DockerError::blob_unknown(&info.reference))
         }
     }
 
