@@ -273,11 +273,11 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                 },
                 Err(e) => {
                     log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
-                    Err(e.manifest_context())
+                    Err(e.manifest_context(&info))
                 }
             }
         },
-        Err(e) => Err(e.manifest_context())
+        Err(e) => Err(e.manifest_context(&info))
     }
 }
 
@@ -318,7 +318,7 @@ async fn blob(info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
                 }),
                 Err(e) => {
                     log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
-                    Err(e.blob_context())
+                    Err(e.blob_context(&info))
                 }
             }
         },
@@ -354,8 +354,30 @@ async fn nix_build<'l>(registry: &Registry, info: &FetchInfo) -> Result<PathBuf,
     let path = get_serve_root(&registry, &info, &tmp_dir)?;
     let fq: PathBuf = path.join("default.nix");
 
+    {
+        std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
+    }
+
     let mut drv_file = NamedTempFile::new().unwrap();
     drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
+
+    let mut cmd = Command::new("nix-instantiate");
+    let mut child = cmd
+        .arg("--eval")
+        .arg("-E")
+        .arg(format!("builtins.hasAttr \"{}\" (import {})", &info.name, &fq.to_str().unwrap()))
+        .spawn_ok().unwrap();
+
+    let out: Output = child.wait_for_output().unwrap();
+    let mut line_bytes = vec!();
+    let mut reader = LineReader::new(&out.stdout[..]);
+    while let Some(line) = reader.next_line() {
+        line_bytes = line.expect("read error").to_vec();
+    }
+
+    if String::from_utf8(line_bytes).unwrap().trim() == "false" {
+        Err(RepoError::ImageNotFound)?
+    };
 
     let mut cmd = Command::new("nix-build");
     let mut child = cmd

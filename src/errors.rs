@@ -1,7 +1,7 @@
 
 use std::boxed::Box;
-use std::fmt::Display;
 use crate::exec::ExecErrorInfo;
+use crate::FetchInfo;
 
 use serde::Serialize;
 
@@ -24,18 +24,9 @@ pub enum MainError {
 pub enum RepoError {
     Exec(ExecErrorInfo),
     Git(git2::ErrorCode),
+    IndexFile(std::io::Error),
+    ImageNotFound,
     IO(Box<dyn std::fmt::Debug>),
-}
-
-impl Display for RepoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RepoError::Exec(_) => write!(f, "nix build exec error"),
-            RepoError::Git(_) => write!(f, "git error"),
-            RepoError::IO(_) => write!(f, "IO error")
-        }
-
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -60,26 +51,26 @@ pub struct DockerError {
 }
 
 pub trait DockerErrorContext {
-    fn manifest_context(self) -> DockerError;
-    fn blob_context(self) -> DockerError;
+    fn manifest_context(self, info: &FetchInfo) -> DockerError;
+    fn blob_context(self, info: &FetchInfo) -> DockerError;
 
 }
 
 pub trait DockerErrorDetails {
-    fn to_docker_error(&self, code: DockerErrorCode) -> DockerError;
-    fn docker_message(&self) -> String;
+    fn to_docker_error(&self, info: &FetchInfo, code: DockerErrorCode) -> DockerError;
+    fn docker_message(&self, info: &FetchInfo) -> String;
     fn docker_details(&self) -> String;
 }
 
 impl DockerErrorDetails for std::io::Error {
-    fn to_docker_error(&self, code: DockerErrorCode) -> DockerError {
+    fn to_docker_error(&self, info: &FetchInfo, code: DockerErrorCode) -> DockerError {
         DockerError {
             code,
-            message: self.docker_message(),
+            message: self.docker_message(&info),
             details: self.docker_details(),
         }
     }
-    fn docker_message(&self) -> String {
+    fn docker_message(&self, _info: &FetchInfo) -> String {
         "".to_string()
     }
     fn docker_details(&self) -> String {
@@ -88,19 +79,21 @@ impl DockerErrorDetails for std::io::Error {
 }
 
 impl DockerErrorDetails for RepoError {
-    fn to_docker_error(&self, code: DockerErrorCode) -> DockerError {
+    fn to_docker_error(&self, info: &FetchInfo, code: DockerErrorCode) -> DockerError {
         DockerError {
             code,
-            message: self.docker_message(),
+            message: self.docker_message(&info),
             details: self.docker_details(),
         }
     }
-    fn docker_message(&self) -> String {
+    fn docker_message(&self, info: &FetchInfo) -> String {
         match self {
-            RepoError::Git(git2::ErrorCode::NotFound) => "git ref not found",
-            RepoError::Git(_) => "unknown git error",
-            _ => "unknown error"
-        }.to_string()
+            RepoError::Git(git2::ErrorCode::NotFound) => format!("git ref: {} not found", &info.reference),
+            RepoError::Git(_) => "unknown git error".to_string(),
+            RepoError::IndexFile(_) => "failed to read repository index file: /default.nix".to_string(),
+            RepoError::ImageNotFound => format!("attribute: {} not found in repository index: /default.nix", &info.name),
+            _ => "unknown error".to_string()
+        }
     }
     fn docker_details(&self) -> String {
         "debug help".to_string()
@@ -109,11 +102,11 @@ impl DockerErrorDetails for RepoError {
 
 
 impl<T> DockerErrorContext for T where T: DockerErrorDetails {
-    fn manifest_context(self) -> DockerError {
-        self.to_docker_error(DockerErrorCode::ManifestUnknown)
+    fn manifest_context(self, info: &FetchInfo) -> DockerError {
+        self.to_docker_error(info, DockerErrorCode::ManifestUnknown)
     }
-    fn blob_context(self) -> DockerError {
-        self.to_docker_error(DockerErrorCode::BlobUnknown)
+    fn blob_context(self, info: &FetchInfo) -> DockerError {
+        self.to_docker_error(info, DockerErrorCode::BlobUnknown)
     }
 }
 
