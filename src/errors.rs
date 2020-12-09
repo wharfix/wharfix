@@ -26,6 +26,9 @@ pub enum RepoError {
     Git(git2::ErrorCode),
     IndexFile(std::io::Error),
     ImageNotFound,
+    BlobNotFound,
+    ImageReferenceMalformed,
+    IndexAttributeNotFound,
     IO(Box<dyn std::fmt::Debug>),
 }
 
@@ -91,7 +94,9 @@ impl DockerErrorDetails for RepoError {
             RepoError::Git(git2::ErrorCode::NotFound) => format!("git ref: {} not found", &info.reference),
             RepoError::Git(_) => "unknown git error".to_string(),
             RepoError::IndexFile(_) => "failed to read repository index file: /default.nix".to_string(),
-            RepoError::ImageNotFound => format!("attribute: {} not found in repository index: /default.nix", &info.name),
+            RepoError::IndexAttributeNotFound => format!("attribute: {} not found in repository index: /default.nix", &info.name),
+            RepoError::ImageNotFound => format!("image with name: {} and reference: {} not found", &info.reference, &info.name),
+            RepoError::BlobNotFound => format!("blob: {} not found for image: {}", &info.reference, &info.name),
             _ => "unknown error".to_string()
         }
     }

@@ -19,7 +19,7 @@ use actix_web::{App, HttpServer, middleware, Responder, web, FromRequest, HttpRe
 
 use crate::actix_web::dev::Service;
 use actix_web::dev::{HttpResponseBuilder};
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 use std::fs;
 use walkdir::WalkDir;
 use std::str::FromStr;
@@ -28,6 +28,9 @@ use crate::errors::{MainError, RepoError, DockerErrorContext};
 
 use tempdir::TempDir;
 use git2::Repository;
+use git2::FetchOptions;
+use git2::FetchPrune;
+
 
 use std::process::{Command, Output};
 use crate::exec::SpawnOk;
@@ -43,12 +46,16 @@ use regex::Regex;
 use mysql::Pool;
 use crate::mysql::prelude::Queryable;
 
+use tempfile::NamedTempFile;
+use std::ffi::OsStr;
+
 mod errors;
 mod exec;
 mod log;
 
 static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
+static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 
 lazy_static! {
     static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
@@ -71,41 +78,246 @@ enum ServeType {
     Database(Pool),
     Repo(String),
     Path(PathBuf),
+    Derivation(String),
 }
 
-enum Delivery {
+enum ManifestDelivery {
     Repo(Repository),
     Path(PathBuf),
+    Derivation(String),
+}
+
+enum BlobDelivery {
+    Memory,
+    Persistent(PathBuf),
 }
 
 struct Registry {
     #[allow(dead_code)]
     name: String,
-    delivery: Delivery,
+    manifest_delivery: ManifestDelivery,
+    blob_delivery: BlobDelivery,
+}
+
+impl Registry {
+    fn prepare(&self, info: &FetchInfo) -> Result<PathBuf, RepoError> {
+        self.manifest_delivery.prepare(info)
+    }
+    fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
+        self.manifest_delivery.index(serve_root, info)
+    }
+    async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        self.manifest_delivery.manifest(serve_root, info).await
+    }
+    async fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
+        self.blob_delivery.blob(info)
+    }
+    fn blob_discovery(&self, path: &Path) {
+        self.blob_delivery.discover(path);
+    }
+}
+
+impl ManifestDelivery {
+    fn prepare(&self, info: &FetchInfo) -> Result<PathBuf, RepoError> {
+        match self {
+            Self::Repo(r) => {
+                let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
+                let refs: &[&str] = &[];
+                let mut fo = FetchOptions::new();
+                fo.prune(FetchPrune::On);
+                r.find_remote("origin")?.fetch(refs, Some(&mut fo), None)?;
+                repo_checkout(&r, &info.reference, &tmp_dir)?;
+                Ok(tmp_dir.path().to_path_buf())
+            },
+            Self::Path(p) => Ok(p.clone()),
+            Self::Derivation(output) => {
+                lazy_static! {
+                    static ref RE: Regex = Regex::new("^[a-z0-9._-]{32,128}$").unwrap();
+                }
+                let derivation_file = PathBuf::from(format!("/nix/store/{}.drv", &info.reference));
+                if ! RE.is_match(&info.reference) {
+                    Err(RepoError::ImageNotFound)
+                } else if ! derivation_file.exists() || ! nix_derivation_info(&derivation_file).has_output(&output) {
+                    Err(RepoError::ImageNotFound)
+                } else {
+                    Ok(derivation_file)
+                }
+            }
+        }
+    }
+    fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
+        match self {
+            ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
+                let fq: PathBuf = serve_root.join("default.nix");
+            
+                {
+                    std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
+                }
+            
+                let mut cmd = Command::new("nix-instantiate");
+                let mut child = cmd
+                    .arg("--eval")
+                    .arg("-E")
+                    .arg(format!("builtins.hasAttr \"{}\" (import {})", &info.name, &fq.to_str().unwrap()))
+                    .spawn_ok().unwrap();
+            
+                let out: Output = child.wait_for_output().unwrap();
+                let mut line_bytes = vec!();
+                let mut reader = LineReader::new(&out.stdout[..]);
+                while let Some(line) = reader.next_line() {
+                    line_bytes = line.expect("read error").to_vec();
+                }
+            
+                if String::from_utf8(line_bytes).unwrap().trim() == "false" {
+                    Err(RepoError::IndexAttributeNotFound)?
+                };
+                Ok(())
+            },
+            ManifestDelivery::Derivation(_) => Ok(())
+        }
+    }
+    async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        use std::io::Write;
+
+        let mut cmd = Command::new("nix-build");
+        cmd.arg("--no-out-link");
+
+        let mut child = match self {
+            Self::Repo(_) | ManifestDelivery::Path(_) => {
+                let mut drv_file = NamedTempFile::new().unwrap();
+                drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
+                let fq: PathBuf = serve_root.join("default.nix");
+                cmd
+                .arg("--arg")
+                .arg("indexFile")
+                .arg(&fq.to_str().unwrap())
+                .arg(&drv_file.path())
+                .arg("-A")
+                .arg(&info.name)
+            }
+            Self::Derivation(output) => {
+                cmd
+                .arg(&serve_root)
+                .arg("-A")
+                .arg(&output)
+            },
+        }.spawn_ok().unwrap();
+    
+        let out: Output = child.wait_for_output().unwrap();
+        let mut line_bytes = vec!();
+        let mut reader = LineReader::new(&out.stdout[..]);
+        while let Some(line) = reader.next_line() {
+            line_bytes = line.expect("read error").to_vec();
+        }
+    
+        let stringed = String::from_utf8(line_bytes).unwrap();
+        Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
+    }
+}
+
+impl BlobDelivery {
+    fn discover(&self, path: &Path) {
+        use std::os::unix::fs;
+        use std::io::ErrorKind;
+
+        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path) {
+            let file_name = PathBuf::from(entry.file_name());
+            let parts: Vec<&str> = file_name.to_str().unwrap().split('.').collect();
+            let blob_info = BlobInfo{
+                content_type: file_name_to_content_type(&file_name).to_string(),
+                path: entry.path().to_path_buf()
+            };
+            let name = format!("sha256:{digest}", digest=parts[0]);
+            match self {
+                BlobDelivery::Memory => { BLOBS.write().unwrap().insert(name, blob_info); },
+                BlobDelivery::Persistent(dir) => {
+                    match fs::symlink(entry.path(), dir.join(&name)) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            if e.kind() != ErrorKind::AlreadyExists {
+                                log::error(&format!("error caching: {}", &name), &e);
+                                panic!("could not cache blob sha");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
+        match self {
+            Self::Memory => {
+                match BLOBS.read().unwrap().get(&info.reference) {
+                    Some(blob_info) => Ok(blob_info.clone()),
+                    None => Err(DockerError::blob_unknown(&info.reference)),
+                }
+            },
+            Self::Persistent(path) => {
+                let full_path = path.join(&info.reference);
+                let link_src = fs::read_link(&full_path).map_err(|e| e.blob_context(&info))?;
+
+                Ok(BlobInfo {
+                    content_type: file_name_to_content_type(&full_path),
+                    path: link_src,
+                })
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+struct Derivation {
+    file: HashMap<String, DerivationInfo>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DerivationInfo {
+    outputs: HashMap<String, serde_json::Value>,
+}
+
+impl Derivation {
+    fn has_output(&self, output: &str) -> bool {
+        self.file.values().next().map(|f| f.outputs.get(output).is_some()).unwrap_or(false)
+    }
+}
+
+fn nix_derivation_info(derivation_file: &Path) -> Derivation {
+    let mut cmd = Command::new("nix");
+    cmd.arg("show-derivation").arg(derivation_file);
+    let mut child = cmd.spawn_ok().unwrap();
+    let out: Derivation = child.output_json().unwrap();
+    out
 }
 
 use crate::errors::{DockerError};
 
 impl ServeType {
     fn to_registry(host: &str) -> Result<Registry, DockerError> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?").unwrap();
-        }
-
         let serve_type = unsafe {
             SERVE_TYPE.as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))
         }?;
-        let name = RE.captures(host).and_then(|c| c.get(1)).ok_or(DockerError::repository_name_malformed())?.as_str();
+        let name = host;
+
+        let blob_delivery = unsafe {
+            BLOB_CACHE_DIR.as_ref().map(|dir| BlobDelivery::Persistent(dir.clone())).unwrap_or(BlobDelivery::Memory)
+        };
 
         Ok(match serve_type {
               ServeType::Database(pool) => {
-                  let mut conn = pool.get_conn().or_else(|e| Err(DockerError::unknown("failed to get database connection", e)))?;
-                  let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name AND enabled = true AND destroyed IS NULL", params! { name }).or_else(|e| Err(DockerError::unknown("database query error", e)))?;
-                  let repo_url = res.ok_or(DockerError::repository_unknown())?;
-                  Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, &repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) }
+                    lazy_static! {
+                        static ref RE: Regex = Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?").unwrap();
+                    }
+                    let name = RE.captures(host).and_then(|c| c.get(1)).ok_or(DockerError::repository_name_malformed())?.as_str();
+
+                    let mut conn = pool.get_conn().or_else(|e| Err(DockerError::unknown("failed to get database connection", e)))?;
+                    let res = conn.exec_first("SELECT repourl FROM registry WHERE name = :name AND enabled = true AND destroyed IS NULL", params! { name }).or_else(|e| Err(DockerError::unknown("database query error", e)))?;
+                    let repo_url = res.ok_or(DockerError::repository_unknown())?;
+                    Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Repo(repo_open(name, &repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) }
               },
-              ServeType::Repo(repo_url) => Registry { name: name.to_string(), delivery: Delivery::Repo(repo_open(name, repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) },
-              ServeType::Path(path) => Registry { name: name.to_string(), delivery: Delivery::Path(path.clone()) }
+              ServeType::Repo(repo_url) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Repo(repo_open(name, repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) },
+              ServeType::Path(path) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Path(path.clone()) },
+              ServeType::Derivation(output) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Derivation(output.to_owned()) }
         })
     }
 }
@@ -132,21 +344,31 @@ fn main() {
         .long("path")
         .help("Path to directory of static docker image specs")
         .takes_value(true)
-        .required_unless_one(&["repo", "dbconnfile"]))
+        .required_unless_one(&["repo", "dbconnfile", "derivationoutput"]))
     .arg(clap::Arg::with_name("repo")
         .long("repo")
         .help("URL to git repository")
         .takes_value(true)
-        .required_unless_one(&["path", "dbconnfile"]))
+        .required_unless_one(&["path", "dbconnfile", "derivationoutput"]))
     .arg(clap::Arg::with_name("dbconnfile")
         .long("dbconnfile")
         .help("Path to file from which to read db connection details")
         .takes_value(true)
-        .required_unless_one(&["path", "repo"]))
+        .required_unless_one(&["path", "repo", "derivationoutput"]))
+    .arg(clap::Arg::with_name("derivationoutput")
+        .long("derivation-output")
+        .help("Output which servable derivations need to produce to be valid")
+        .takes_value(true)
+        .required_unless_one(&["path", "repo", "dbconnfile"]))
     .arg(clap::Arg::with_name("target")
         .long("target")
         .help("Target path in which to checkout repos")
         .default_value("/tmp/wharfix")
+        .required(false))
+    .arg(clap::Arg::with_name("blobcachedir")
+        .long("blob-cache-dir")
+        .help("Directory in which to store persitent symlinks to docker layer blobs")
+        .takes_value(true)
         .required(false))
     .arg(clap::Arg::with_name("address")
         .long("address")
@@ -175,17 +397,27 @@ fn main() {
             }
         }).unwrap();
 
-        let serve_type = Some(match m {
+        let serve_type = Some(match &m {
            m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
            m if m.is_present("repo") => ServeType::Repo(m.value_of("repo").unwrap().to_string()),
            m if m.is_present("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.value_of("dbconnfile").unwrap()).unwrap())),
+           m if m.is_present("derivationoutput") => ServeType::Derivation(m.value_of("derivationoutput").unwrap().to_string()),
            _ => panic!("clap should ensure this never happens")
         });
+
+        let blob_cache_dir = {
+            if m.is_present("blobcachedir") {
+                Some(fs::canonicalize(m.value_of("blobcachedir").unwrap()).unwrap())
+            } else {
+                None
+            }
+        };
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
+            BLOB_CACHE_DIR = blob_cache_dir;
         }
 
         listen(listen_address, listen_port)
@@ -198,23 +430,6 @@ fn main() {
 
 fn db_connect(creds_file: PathBuf) -> Pool {
     Pool::new(fs::read_to_string(&creds_file).unwrap()).unwrap()
-}
-
-fn get_serve_root<'l>(registry: &Registry, info: &FetchInfo, tmp_dir: &'l TempDir) -> Result<PathBuf, RepoError> {
-    use git2::{FetchPrune, FetchOptions};
-
-    Ok(match &registry.delivery {
-        Delivery::Repo(r) => {
-            let refs: &[&str] = &[];
-            let mut fo = FetchOptions::new();
-            fo.prune(FetchPrune::On);
-            r.find_remote("origin")?.fetch(refs, Some(&mut fo), None)?;
-            repo_checkout(&r, &info.reference, tmp_dir)?;
-            tmp_dir.path().to_path_buf()
-        },
-        Delivery::Path(p) => p.clone()
-    })
-
 }
 
 #[actix_rt::main]
@@ -262,13 +477,15 @@ impl Responder for WharfixManifest {
 }
 
 async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixManifest, DockerError> {
+    let serve_root = registry.prepare(&info).map_err(|e| e.manifest_context(&info))?;
+    registry.index(&serve_root, &info).map_err(|e| e.manifest_context(&info))?;
 
-    match nix_build(&registry, &info).await {
+    match registry.manifest(&serve_root, &info).await {
         Ok(path) => {
             let fq: PathBuf = path.join("manifest.json");
             match fs::read_to_string(&fq) {
                 Ok(manifest) => {
-                        blob_discovery(&path.join("blobs"));
+                        registry.blob_discovery(&path.join("blobs"));
                         Ok(WharfixManifest(manifest))
                 },
                 Err(e) => {
@@ -277,7 +494,7 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                 }
             }
         },
-        Err(e) => Err(e.manifest_context(&info))
+        Err(e) => Err(e)
     }
 }
 
@@ -301,16 +518,9 @@ impl Responder for WharfixBlob {
 }
 
 
-async fn blob(info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
-    let blob_info = {
-        match BLOBS.read().unwrap().get(&info.reference) {
-            Some(blob_info) => Some(blob_info.clone()),
-            None => None
-        }
-    };
-
-    match blob_info {
-        Some(blob_info) => {
+async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
+    match registry.blob(&info).await {
+        Ok(blob_info) => {
             match fs::read(&blob_info.path) {
                 Ok(blob) => Ok(WharfixBlob{
                     content_type: blob_info.content_type.clone(),
@@ -322,83 +532,21 @@ async fn blob(info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
                 }
             }
         },
-        None => {
-            Err(DockerError::blob_unknown(&info.reference))
+        Err(e) => {
+            Err(e)
         }
     }
 
 
 }
 
-fn blob_discovery(path: &PathBuf) {
-    for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path.as_path()) {
-        if let Some(file_name) = entry.file_name().to_str() {
-            let parts: Vec<&str> = file_name.split('.').collect();
-            BLOBS.write().unwrap().insert(format!("sha256:{digest}", digest=parts[0]), BlobInfo{
-                content_type: String::from(match parts[1] {
-                    "tar" => "application/vnd.docker.image.rootfs.diff.tar",
-                    "json" => "application/vnd.docker.container.image.v1+json",
-                    _ => "application/octet-stream",
-                }),
-                path: entry.path().to_path_buf()
-            });
-        }
-    }
-}
-
-async fn nix_build<'l>(registry: &Registry, info: &FetchInfo) -> Result<PathBuf, RepoError> {
-    use tempfile::NamedTempFile;
-    use std::io::Write;
-
-    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
-    let path = get_serve_root(&registry, &info, &tmp_dir)?;
-    let fq: PathBuf = path.join("default.nix");
-
-    {
-        std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
-    }
-
-    let mut drv_file = NamedTempFile::new().unwrap();
-    drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
-
-    let mut cmd = Command::new("nix-instantiate");
-    let mut child = cmd
-        .arg("--eval")
-        .arg("-E")
-        .arg(format!("builtins.hasAttr \"{}\" (import {})", &info.name, &fq.to_str().unwrap()))
-        .spawn_ok().unwrap();
-
-    let out: Output = child.wait_for_output().unwrap();
-    let mut line_bytes = vec!();
-    let mut reader = LineReader::new(&out.stdout[..]);
-    while let Some(line) = reader.next_line() {
-        line_bytes = line.expect("read error").to_vec();
-    }
-
-    if String::from_utf8(line_bytes).unwrap().trim() == "false" {
-        Err(RepoError::ImageNotFound)?
-    };
-
-    let mut cmd = Command::new("nix-build");
-    let mut child = cmd
-        .arg("--no-out-link")
-        .arg("--arg")
-        .arg("indexFile")
-        .arg(&fq.to_str().unwrap())
-        .arg(&drv_file.path())
-        .arg("-A")
-        .arg(&info.name)
-        .spawn_ok()?;
-
-    let out: Output = child.wait_for_output()?;
-    let mut line_bytes = vec!();
-    let mut reader = LineReader::new(&out.stdout[..]);
-    while let Some(line) = reader.next_line() {
-        line_bytes = line.expect("read error").to_vec();
-    }
-
-    let stringed = String::from_utf8(line_bytes).unwrap();
-    Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
+fn file_name_to_content_type(file_name: &Path) -> String {
+    let extension = file_name.extension().unwrap_or(OsStr::new("")).to_str().unwrap_or("");
+    match extension {
+        "tar" => "application/vnd.docker.image.rootfs.diff.tar",
+        "json" => "application/vnd.docker.container.image.v1+json",
+        _ => "application/octet-stream",
+    }.to_string()
 }
 
 fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
