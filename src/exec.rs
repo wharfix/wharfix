@@ -1,6 +1,6 @@
 use std::process::{Command, Child, Output};
 use std::error::Error;
-use serde::export::fmt::Debug;
+use std::fmt::Debug;
 use std::{fmt, mem};
 use std::io::Write;
 use std::process::Stdio;
