@@ -56,6 +56,7 @@ mod log;
 static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
+static mut SUBSTITUTERS: Option<String> = None;
 
 lazy_static! {
     static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
@@ -181,6 +182,13 @@ impl ManifestDelivery {
 
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
+        unsafe {
+            if SUBSTITUTERS.is_some() {
+                cmd.arg("--option");
+                cmd.arg("substituters");
+                cmd.arg(SUBSTITUTERS.as_ref().unwrap());
+            }
+        }
 
         let mut child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
@@ -370,6 +378,11 @@ fn main() {
         .help("Directory in which to store persitent symlinks to docker layer blobs")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("substituters")
+        .long("substituters")
+        .help("Comma-separated list of nix substituters to pass directly to nix-build as 'substituters'")
+        .takes_value(true)
+        .required(false))
     .arg(clap::Arg::with_name("address")
         .long("address")
         .help("Listen address to open on <port>")
@@ -418,6 +431,7 @@ fn main() {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
             BLOB_CACHE_DIR = blob_cache_dir;
+            SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
         }
 
         listen(listen_address, listen_port)
