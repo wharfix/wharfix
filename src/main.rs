@@ -30,6 +30,8 @@ use tempdir::TempDir;
 use git2::Repository;
 use git2::FetchOptions;
 use git2::FetchPrune;
+use git2::Cred;
+use git2::RemoteCallbacks;
 
 
 use std::process::{Command, Output};
@@ -57,6 +59,8 @@ static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
+static mut INDEX_FILE_PATH: Option<PathBuf> = None;
+static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 
 lazy_static! {
     static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
@@ -101,8 +105,8 @@ struct Registry {
 }
 
 impl Registry {
-    fn prepare(&self, info: &FetchInfo) -> Result<PathBuf, RepoError> {
-        self.manifest_delivery.prepare(info)
+    fn prepare(&self, temp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
+        self.manifest_delivery.prepare(temp_dir, info)
     }
     fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         self.manifest_delivery.index(serve_root, info)
@@ -119,16 +123,15 @@ impl Registry {
 }
 
 impl ManifestDelivery {
-    fn prepare(&self, info: &FetchInfo) -> Result<PathBuf, RepoError> {
+    fn prepare(&self, tmp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
         match self {
             Self::Repo(r) => {
-                let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
                 let refs: &[&str] = &[];
-                let mut fo = FetchOptions::new();
+                let mut fo = fetch_options();
                 fo.prune(FetchPrune::On);
                 r.find_remote("origin")?.fetch(refs, Some(&mut fo), None)?;
                 repo_checkout(&r, &info.reference, &tmp_dir)?;
-                Ok(tmp_dir.path().to_path_buf())
+                Ok(tmp_dir.to_path_buf())
             },
             Self::Path(p) => Ok(p.clone()),
             Self::Derivation(output) => {
@@ -149,8 +152,8 @@ impl ManifestDelivery {
     fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
-                let fq: PathBuf = serve_root.join("default.nix");
-            
+                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
+                log::data("looking for indexfile at", &fq);
                 {
                     std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
                 }
@@ -159,7 +162,7 @@ impl ManifestDelivery {
                 let mut child = cmd
                     .arg("--eval")
                     .arg("-E")
-                    .arg(format!("builtins.hasAttr \"{}\" (import {})", &info.name, &fq.to_str().unwrap()))
+                    .arg(format!("builtins.hasAttr \"{}\" (import {} {})", &info.name, &fq.to_str().unwrap(), "{}"))
                     .spawn_ok().unwrap();
             
                 let out: Output = child.wait_for_output().unwrap();
@@ -190,11 +193,11 @@ impl ManifestDelivery {
             }
         }
 
+        let mut drv_file = NamedTempFile::new().unwrap();
         let mut child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
-                let mut drv_file = NamedTempFile::new().unwrap();
                 drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
-                let fq: PathBuf = serve_root.join("default.nix");
+                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 cmd
                 .arg("--arg")
                 .arg("indexFile")
@@ -383,6 +386,17 @@ fn main() {
         .help("Comma-separated list of nix substituters to pass directly to nix-build as 'substituters'")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("indexfilepath")
+        .long("index-file-path")
+        .help("Path to repository index file")
+        .default_value("default.nix")
+        .takes_value(true)
+        .required(false))
+    .arg(clap::Arg::with_name("sshprivatekey")
+        .long("ssh-private-key")
+        .help("Path to optional ssh private key file")
+        .takes_value(true)
+        .required(false))
     .arg(clap::Arg::with_name("address")
         .long("address")
         .help("Listen address to open on <port>")
@@ -427,11 +441,15 @@ fn main() {
             }
         };
 
+        let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
+
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
+            INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
+            SSH_PRIVATE_KEY = fo;
         }
 
         listen(listen_address, listen_port)
@@ -491,7 +509,8 @@ impl Responder for WharfixManifest {
 }
 
 async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixManifest, DockerError> {
-    let serve_root = registry.prepare(&info).map_err(|e| e.manifest_context(&info))?;
+    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
+    let serve_root = registry.prepare(tmp_dir.path(), &info).map_err(|e| e.manifest_context(&info))?;
     registry.index(&serve_root, &info).map_err(|e| e.manifest_context(&info))?;
 
     match registry.manifest(&serve_root, &info).await {
@@ -574,6 +593,7 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     } else {
         log::info(&format!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target));
         let mut rb = RepoBuilder::new();
+        rb.fetch_options(fetch_options());
         rb.bare(true);
         rb.clone(url, &clone_target).or_else(|e| Err(RepoError::Git(e.code())))
     }?)
@@ -588,9 +608,7 @@ fn pathname_generator<'l>(name: &str, url: &str) -> String {
     format!("{}-{}", hasher.result_str(), name)
 }
 
-fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Result<(), RepoError> {
-    let tmp_path = tmp_dir.path();
-
+fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Result<(), RepoError> {
     let mut cb = CheckoutBuilder::new();
     cb.force();
     cb.update_index(false);
@@ -602,4 +620,25 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_dir: &TempDir) -> Re
     })?;
     repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(e.code())))?;
     Ok(())
+}
+
+fn fetch_options<'l>() -> FetchOptions<'l> {
+    let mut fo = FetchOptions::new();
+
+    match unsafe { SSH_PRIVATE_KEY.as_ref() } {
+        Some(key) => {
+            let mut callbacks = RemoteCallbacks::new();
+            callbacks.credentials(move |_url, username_from_url, _allowed_types| {
+                Cred::ssh_key(
+                    username_from_url.unwrap(),
+                    None,
+                    std::path::Path::new(&key.to_owned()),
+                    None,
+                )
+            });
+            fo.remote_callbacks(callbacks);
+            fo
+        },
+        None => fo
+    }
 }

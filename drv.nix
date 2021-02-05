@@ -1,6 +1,7 @@
 { indexFile }:
 let
-  index = import indexFile;
+  _index = import indexFile;
+  index = if builtins.isFunction _index then _index {} else _index;
   pkgs = index.pkgs or (import <nixpkgs> {});
   drv = spec: pkgs.runCommand "${spec.name}-servable" { buildInputs = [pkgs.jq]; } ''
     mkdir -p $out/raw $out/blobs
@@ -26,4 +27,4 @@ let
     echo "$MANIFESTJSON" >$out/manifest.json
  '';
 in
-  pkgs.lib.mapAttrs (_: v: drv v) (import indexFile)
+  pkgs.lib.mapAttrs (_: v: drv v) index
