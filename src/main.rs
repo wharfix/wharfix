@@ -60,6 +60,7 @@ static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
+static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 
 lazy_static! {
@@ -196,15 +197,22 @@ impl ManifestDelivery {
         let mut drv_file = NamedTempFile::new().unwrap();
         let mut child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
-                drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
-                cmd
-                .arg("--arg")
-                .arg("indexFile")
-                .arg(&fq.to_str().unwrap())
-                .arg(&drv_file.path())
-                .arg("-A")
-                .arg(&info.name)
+                if unsafe { INDEX_FILE_IS_BUILDABLE } {
+                    cmd
+                    .arg(&fq.to_str().unwrap())
+                    .arg("-A")
+                    .arg(&info.name)
+                } else {
+                    drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
+                    cmd
+                    .arg("--arg")
+                    .arg("indexFile")
+                    .arg(&fq.to_str().unwrap())
+                    .arg(&drv_file.path())
+                    .arg("-A")
+                    .arg(&info.name)
+                }
             }
             Self::Derivation(output) => {
                 cmd
@@ -392,6 +400,11 @@ fn main() {
         .default_value("default.nix")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("indexfileisbuildable")
+        .long("index-file-is-buildable")
+        .help("Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper)")
+        .takes_value(false)
+        .required(false))
     .arg(clap::Arg::with_name("sshprivatekey")
         .long("ssh-private-key")
         .help("Path to optional ssh private key file")
@@ -449,6 +462,7 @@ fn main() {
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
+            INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
             SSH_PRIVATE_KEY = fo;
         }
 
