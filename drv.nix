@@ -10,9 +10,9 @@ let
     popd
 
     CONF="$(cat $out/raw/manifest.json | jq -r '.[].Config')"
-    CONFSIZE="$(wc -c $out/raw/$CONF | awk '{ print $1 }')"
-    CONFSUM="$(sha256sum $out/raw/$CONF | awk '{ print $1 }')"
-    cp $out/raw/$CONF $out
+    cat "$out/raw/$CONF" | jq -SMc >$out/$CONF
+    CONFSIZE="$(wc -c "$out/$CONF" | awk '{ print $1 }')"
+    CONFSUM="$(sha256sum "$out/$CONF" | awk '{ print $1 }')"
     ln -s "$out/$CONF" "$out/blobs/$CONFSUM.json"
 
     MANIFESTJSON='{ "schemaVersion": 2, "mediaType": "application/vnd.docker.distribution.manifest.v2+json"'
@@ -24,7 +24,7 @@ let
       ln -s "$out/raw/$L" "$out/blobs/$OUTNAME.tar"
       MANIFESTJSON=$(echo "$MANIFESTJSON" | jq '.layers += [{ "mediaType": "application/vnd.docker.image.rootfs.diff.tar", "digest": "sha256:'"$OUTNAME"'", "size": '"$OUTSIZE"' }]')
     done
-    echo "$MANIFESTJSON" >$out/manifest.json
+    echo "$MANIFESTJSON" | jq -SMc >$out/manifest.json
  '';
 in
   pkgs.lib.mapAttrs (_: v: drv v) index
