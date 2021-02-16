@@ -63,6 +63,11 @@ static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 
+const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
+const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar";
+const CONTENT_TYPE_CONTAINER_CONFIG: &str = "application/vnd.docker.container.image.v1+json";
+const CONTENT_TYPE_UNKNOWN: &str = "application/octet-stream";
+
 lazy_static! {
     static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
 }
@@ -76,6 +81,7 @@ pub struct FetchInfo {
 
 #[derive(Clone)]
 struct BlobInfo {
+    name: String,
     content_type: String,
     path: PathBuf,
 }
@@ -235,32 +241,36 @@ impl ManifestDelivery {
 }
 
 impl BlobDelivery {
-    fn discover(&self, path: &Path) {
+    fn store_blob(&self, info: BlobInfo) {
         use std::os::unix::fs;
         use std::io::ErrorKind;
 
-        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path) {
-            let file_name = PathBuf::from(entry.file_name());
-            let parts: Vec<&str> = file_name.to_str().unwrap().split('.').collect();
-            let blob_info = BlobInfo{
-                content_type: file_name_to_content_type(&file_name).to_string(),
-                path: entry.path().to_path_buf()
-            };
-            let name = format!("sha256:{digest}", digest=parts[0]);
-            match self {
-                BlobDelivery::Memory => { BLOBS.write().unwrap().insert(name, blob_info); },
-                BlobDelivery::Persistent(dir) => {
-                    match fs::symlink(entry.path(), dir.join(&name)) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            if e.kind() != ErrorKind::AlreadyExists {
-                                log::error(&format!("error caching: {}", &name), &e);
-                                panic!("could not cache blob sha");
-                            }
+        match self {
+            BlobDelivery::Memory => { BLOBS.write().unwrap().insert(info.name.clone(), info); },
+            BlobDelivery::Persistent(dir) => {
+                match fs::symlink(info.path, dir.join(&info.name)) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        if e.kind() != ErrorKind::AlreadyExists {
+                            log::error(&format!("error caching: {}", &info.name), &e);
                         }
                     }
                 }
             }
+        }
+    }
+
+    fn discover(&self, path: &Path) {
+        // traverse blob path to discover new blobs
+        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path) {
+            let file_name = PathBuf::from(entry.file_name());
+            let parts: Vec<&str> = file_name.to_str().unwrap().split('.').collect();
+            let name = format!("sha256:{digest}", digest=parts[0]);
+            self.store_blob(BlobInfo{
+                name,
+                content_type: file_name_to_content_type(&file_name).to_string(),
+                path: entry.path().to_path_buf()
+            });
         }
     }
     fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
@@ -276,6 +286,7 @@ impl BlobDelivery {
                 let link_src = fs::read_link(&full_path).map_err(|e| e.blob_context(&info))?;
 
                 Ok(BlobInfo {
+                    name: info.reference.to_string(),
                     content_type: file_name_to_content_type(&full_path),
                     path: link_src,
                 })
@@ -482,7 +493,10 @@ fn db_connect(creds_file: PathBuf) -> Pool {
 async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>{
     log::info(&format!("start listening on port: {}", listen_port));
 
-    HttpServer::new(|| {
+    let manifest_url = "/v2/{name}/manifests/{reference}";
+    let blob_url = "/v2/{name}/blobs/{reference}";
+
+    HttpServer::new(move || {
         App::new()
             .wrap_fn(|req, srv| {
                 log::new_request();
@@ -492,8 +506,10 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
             })
             .wrap(middleware::Compress::default())
             .route("/v2", web::get().to(version))
-            .route("/v2/{name}/manifests/{reference}", web::get().to(manifest))
-            .route("/v2/{name}/blobs/{reference}", web::get().to(blob))
+            .route(manifest_url, web::head().to(manifest))
+            .route(manifest_url, web::get().to(manifest))
+            .route(blob_url, web::head().to(blob))
+            .route(blob_url, web::get().to(blob))
     })
         .bind(format!("{listen_address}:{listen_port}", listen_address=listen_address, listen_port=listen_port))?
         .run()
@@ -506,34 +522,93 @@ async fn version(_registry: Registry) -> impl Responder {
         .finish()
 }
 
-struct WharfixManifest(String);
+struct WharfixManifest{
+    body: String,
+    digest: String,
+    #[allow(dead_code)]
+    path: PathBuf,
+}
+
+impl WharfixManifest {
+    fn new(body: String, path: PathBuf) -> Self {
+        use crypto::sha2::Sha256;
+        use crypto::digest::Digest;
+
+        let digest = {
+            let mut hasher = Sha256::new();
+            hasher.input_str(&body);
+            format!("sha256:{digest}", digest=hasher.result_str())
+        };
+
+        //TODO: verify that above matches with drv embedded digest of manifest
+
+        Self{
+            body,
+            path,
+            digest
+        }
+    }
+    fn body(self) -> String {
+        self.body
+    }
+    fn content_type(&self) -> &str {
+        CONTENT_TYPE_MANIFEST
+    }
+    fn digest(&self) -> &str {
+        self.digest.as_str()
+    }
+}
 
 impl Responder for WharfixManifest {
     type Error = Error;
     type Future = Ready<Result<HttpResponse, Error>>;
 
-    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
+    fn respond_to(self, req: &HttpRequest) -> Self::Future {
         use futures::future::ready;
+        use actix_web::http::Method;
 
-        ready(Ok(HttpResponse::Ok()
+        let mut builder = HttpResponse::Ok();
+        let builder = builder
             .header("Docker-Distribution-API-Version", "registry/2.0")
-            .content_type("application/vnd.docker.distribution.manifest.v2+json")
-            .body(&self.0)))
+            .header("Docker-Content-Digest", self.digest())
+            .content_type(self.content_type());
+
+        // don't output actual manifest if this is a HEAD-request (finalize req-builder with empty body)
+        ready(Ok(if req.method() == Method::HEAD {
+            builder.finish()
+        } else {
+            builder.body(self.body())
+        }))
     }
 }
 
 async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixManifest, DockerError> {
-    let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
-    let serve_root = registry.prepare(tmp_dir.path(), &info).map_err(|e| e.manifest_context(&info))?;
-    registry.index(&serve_root, &info).map_err(|e| e.manifest_context(&info))?;
 
-    match registry.manifest(&serve_root, &info).await {
+    //try to look up existing manifest blob
+    let existing_blob = registry.blob(&info).await
+        .and_then(|blob_info| blob_info.path.read_link().map_err(|e| e.manifest_context(&info)))
+        .and_then(|manifest_path| manifest_path.parent().map(|p| p.to_path_buf()).ok_or(DockerError::snafu("Failed to get parent diretory of manifest.json")));
+
+    let path = match existing_blob {
+        Ok(path) => Ok(path),
+        Err(_) => {
+            //no dice, try evaling+building
+            let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
+            let serve_root = registry.prepare(tmp_dir.path(), &info).map_err(|e| e.manifest_context(&info))?;
+            registry.index(&serve_root, &info).map_err(|e| e.manifest_context(&info))?;
+            registry.manifest(&serve_root, &info).await
+        }
+    };
+
+    match path {
         Ok(path) => {
             let fq: PathBuf = path.join("manifest.json");
+            log::info(&format!("serving manifest from path: {:?}", &fq));
             match fs::read_to_string(&fq) {
-                Ok(manifest) => {
-                        registry.blob_discovery(&path.join("blobs"));
-                        Ok(WharfixManifest(manifest))
+                Ok(manifest_str) => {
+                    let manifest = WharfixManifest::new(manifest_str, fq);
+                    registry.blob_discovery(&path.join("blobs"));
+                    Ok(manifest)
                 },
                 Err(e) => {
                     log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
@@ -590,9 +665,10 @@ async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixB
 fn file_name_to_content_type(file_name: &Path) -> String {
     let extension = file_name.extension().unwrap_or(OsStr::new("")).to_str().unwrap_or("");
     match extension {
-        "tar" => "application/vnd.docker.image.rootfs.diff.tar",
-        "json" => "application/vnd.docker.container.image.v1+json",
-        _ => "application/octet-stream",
+        "difftar" => CONTENT_TYPE_DIFFTAR,
+        "configjson" => CONTENT_TYPE_CONTAINER_CONFIG,
+        "manifestjson" => CONTENT_TYPE_MANIFEST,
+        _ => CONTENT_TYPE_UNKNOWN,
     }.to_string()
 }
 
