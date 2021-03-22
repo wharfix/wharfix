@@ -62,6 +62,7 @@ static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
+static mut ADD_NIX_GCROOTS: bool = false;
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
 const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar";
@@ -243,6 +244,17 @@ impl ManifestDelivery {
     }
 }
 
+fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), exec::ExecErrorInfo> {
+    let mut cmd = Command::new("nix-store");
+    cmd.arg("--add-root")
+    .arg(gc_root_path)
+    .arg("--indirect")
+    .arg("-r")
+    .arg(store_path);
+
+    cmd.spawn_ok()?.wait()
+}
+
 impl BlobDelivery {
     fn store_blob(&self, info: BlobInfo) {
         use std::os::unix::fs;
@@ -251,13 +263,20 @@ impl BlobDelivery {
         match self {
             BlobDelivery::Memory => { BLOBS.write().unwrap().insert(info.name.clone(), info); },
             BlobDelivery::Persistent(dir) => {
-                match fs::symlink(info.path, dir.join(&info.name)) {
+                let cache_path = dir.join(&info.name);
+                match fs::symlink(&info.path, &cache_path) {
                     Ok(_) => {}
                     Err(e) => {
                         if e.kind() != ErrorKind::AlreadyExists {
                             log::error(&format!("error caching: {}", &info.name), &e);
                         }
                     }
+                }
+                if unsafe { ADD_NIX_GCROOTS } {
+                    nix_add_root(&cache_path, &info.path).or_else(|e| {
+                        log::error(&format!("error caching: {}", &info.name), &e);
+                        Err(e)
+                    }).unwrap();
                 }
             }
         }
@@ -424,6 +443,12 @@ fn main() {
         .help("Path to optional ssh private key file")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("addnixgcroots")
+        .long("add-nix-gcroots")
+        .help("Whether to add nix gcroots for blobs cached in blob cache dir")
+        .takes_value(false)
+        .required(false)
+        .requires("blobcachedir"))
     .arg(clap::Arg::with_name("address")
         .long("address")
         .help("Listen address to open on <port>")
@@ -478,6 +503,7 @@ fn main() {
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
             SSH_PRIVATE_KEY = fo;
+            ADD_NIX_GCROOTS = m.is_present("addnixgcroots");
         }
 
         listen(listen_address, listen_port)
