@@ -62,6 +62,7 @@ static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
+static mut ADD_NIX_GCROOTS: bool = false;
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
 const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar";
@@ -126,6 +127,9 @@ impl Registry {
     }
     fn blob_discovery(&self, path: &Path) {
         self.blob_delivery.discover(path);
+    }
+    fn store_blob(&self, info: BlobInfo) {
+        self.blob_delivery.store_blob(info);
     }
 }
 
@@ -240,6 +244,17 @@ impl ManifestDelivery {
     }
 }
 
+fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), exec::ExecErrorInfo> {
+    let mut cmd = Command::new("nix-store");
+    cmd.arg("--add-root")
+    .arg(gc_root_path)
+    .arg("--indirect")
+    .arg("-r")
+    .arg(store_path);
+
+    cmd.spawn_ok()?.wait()
+}
+
 impl BlobDelivery {
     fn store_blob(&self, info: BlobInfo) {
         use std::os::unix::fs;
@@ -248,13 +263,20 @@ impl BlobDelivery {
         match self {
             BlobDelivery::Memory => { BLOBS.write().unwrap().insert(info.name.clone(), info); },
             BlobDelivery::Persistent(dir) => {
-                match fs::symlink(info.path, dir.join(&info.name)) {
+                let cache_path = dir.join(&info.name);
+                match fs::symlink(&info.path, &cache_path) {
                     Ok(_) => {}
                     Err(e) => {
                         if e.kind() != ErrorKind::AlreadyExists {
                             log::error(&format!("error caching: {}", &info.name), &e);
                         }
                     }
+                }
+                if unsafe { ADD_NIX_GCROOTS } {
+                    nix_add_root(&cache_path, &info.path).or_else(|e| {
+                        log::error(&format!("error caching: {}", &info.name), &e);
+                        Err(e)
+                    }).unwrap();
                 }
             }
         }
@@ -283,12 +305,12 @@ impl BlobDelivery {
             },
             Self::Persistent(path) => {
                 let full_path = path.join(&info.reference);
-                let link_src = fs::read_link(&full_path).map_err(|e| e.blob_context(&info))?;
+                let canonical_path = fs::canonicalize(&full_path).map_err(|e| e.blob_context(&info))?;
 
                 Ok(BlobInfo {
                     name: info.reference.to_string(),
-                    content_type: file_name_to_content_type(&full_path),
-                    path: link_src,
+                    content_type: file_name_to_content_type(&canonical_path),
+                    path: canonical_path,
                 })
             },
         }
@@ -421,6 +443,12 @@ fn main() {
         .help("Path to optional ssh private key file")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("addnixgcroots")
+        .long("add-nix-gcroots")
+        .help("Whether to add nix gcroots for blobs cached in blob cache dir")
+        .takes_value(false)
+        .required(false)
+        .requires("blobcachedir"))
     .arg(clap::Arg::with_name("address")
         .long("address")
         .help("Listen address to open on <port>")
@@ -475,6 +503,7 @@ fn main() {
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
             SSH_PRIVATE_KEY = fo;
+            ADD_NIX_GCROOTS = m.is_present("addnixgcroots");
         }
 
         listen(listen_address, listen_port)
@@ -586,8 +615,7 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
 
     //try to look up existing manifest blob
     let existing_blob = registry.blob(&info).await
-        .and_then(|blob_info| blob_info.path.read_link().map_err(|e| e.manifest_context(&info)))
-        .and_then(|manifest_path| manifest_path.parent().map(|p| p.to_path_buf()).ok_or(DockerError::snafu("Failed to get parent diretory of manifest.json")));
+        .and_then(|blob_info| blob_info.path.parent().map(Path::to_path_buf).ok_or(DockerError::snafu("Failed to get parent diretory of manifest.json")));
 
     let path = match existing_blob {
         Ok(path) => Ok(path),
@@ -606,9 +634,15 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
             log::info(&format!("serving manifest from path: {:?}", &fq));
             match fs::read_to_string(&fq) {
                 Ok(manifest_str) => {
-                    let manifest = WharfixManifest::new(manifest_str, fq);
                     registry.blob_discovery(&path.join("blobs"));
-                    Ok(manifest)
+                    path.file_name().map(|path_base_name| {
+                        registry.store_blob(BlobInfo{
+                            name: path_base_name.to_str().unwrap().to_owned(),
+                            content_type: CONTENT_TYPE_MANIFEST.to_owned(),
+                            path: fq.clone()
+                        });
+                    });
+                    Ok(WharfixManifest::new(manifest_str, fq))
                 },
                 Err(e) => {
                     log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
