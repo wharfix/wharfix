@@ -614,8 +614,7 @@ impl Responder for WharfixManifest {
 async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixManifest, DockerError> {
 
     //try to look up existing manifest blob
-    let existing_blob = registry.blob(&info).await
-        .and_then(|blob_info| blob_info.path.parent().map(Path::to_path_buf).ok_or(DockerError::snafu("Failed to get parent diretory of manifest.json")));
+    let existing_blob = registry.blob(&info).await.map(|blob_info| blob_info.path);
 
     let path = match existing_blob {
         Ok(path) => Ok(path),
