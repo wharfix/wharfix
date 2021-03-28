@@ -637,6 +637,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
+name = "dbc-rust-modules"
+version = "0.1.0"
+source = "git+https://github.com/dbcdk/rust-modules?branch=main#60e5be137e6de19f2189e2bdaf9ed70bbd49d886"
+dependencies = [
+ "chrono",
+ "erased-serde",
+ "once_cell",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "derive_more"
 version = "0.99.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2428,6 +2442,7 @@ dependencies = [
  "actix-rt",
  "actix-web",
  "clap",
+ "dbc-rust-modules",
  "erased-serde",
  "futures",
  "git2",

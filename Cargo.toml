@@ -25,3 +25,4 @@ tempfile = "3.1"
 regex = "1.3"
 mysql = "18.2"
 rust-crypto = "0.2"
+dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main" }

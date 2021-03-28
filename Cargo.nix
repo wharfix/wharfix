@@ -1885,6 +1885,61 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "limit_128" ];
       };
+      "dbc-rust-modules" = rec {
+        crateName = "dbc-rust-modules";
+        version = "0.1.0";
+        edition = "2018";
+        workspace_member = null;
+        src = pkgs.fetchgit {
+          url = "https://github.com/dbcdk/rust-modules";
+          rev = "60e5be137e6de19f2189e2bdaf9ed70bbd49d886";
+          sha256 = "18hs085hnsvsmxzhrg7gqknifklmlwnf9cprkkqv8f746b7jn0qm";
+        };
+        dependencies = [
+          {
+            name = "chrono";
+            packageId = "chrono";
+            optional = true;
+          }
+          {
+            name = "erased-serde";
+            packageId = "erased-serde";
+            optional = true;
+          }
+          {
+            name = "once_cell";
+            packageId = "once_cell";
+            optional = true;
+          }
+          {
+            name = "serde";
+            packageId = "serde";
+            optional = true;
+          }
+          {
+            name = "serde_derive";
+            packageId = "serde_derive";
+            optional = true;
+          }
+          {
+            name = "serde_json";
+            packageId = "serde_json";
+            optional = true;
+          }
+          {
+            name = "uuid";
+            packageId = "uuid";
+            optional = true;
+            features = [ "v4" ];
+          }
+        ];
+        features = {
+          "default" = [ "exec" "log" ];
+          "exec" = [ "serde" "serde_derive" "serde_json" ];
+          "log" = [ "chrono" "erased-serde" "once_cell" "serde" "serde_derive" "serde_json" "uuid" ];
+        };
+        resolvedDefaultFeatures = [ "chrono" "default" "erased-serde" "exec" "log" "once_cell" "serde" "serde_derive" "serde_json" "uuid" ];
+      };
       "derive_more" = rec {
         crateName = "derive_more";
         version = "0.99.11";
@@ -6703,6 +6758,10 @@ rec {
           {
             name = "clap";
             packageId = "clap";
+          }
+          {
+            name = "dbc-rust-modules";
+            packageId = "dbc-rust-modules";
           }
           {
             name = "erased-serde";
