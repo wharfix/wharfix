@@ -51,9 +51,9 @@ use crate::mysql::prelude::Queryable;
 use tempfile::NamedTempFile;
 use std::ffi::OsStr;
 
+use dbc_rust_modules::{exec, log};
+
 mod errors;
-mod exec;
-mod log;
 
 static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
@@ -528,7 +528,7 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
     HttpServer::new(move || {
         App::new()
             .wrap_fn(|req, srv| {
-                log::new_request();
+                log::new_session();
                 let host = req.headers().get("HOST").and_then(|hv| hv.to_str().ok()).unwrap_or("");
                 log::data("request", &json!({ "endpoint": format!("{}", req.path()), "host": host }));
                 srv.call(req)
