@@ -2,7 +2,7 @@ name: "Bump-O-Matic"
 
 on:
   schedule:
-    - cron: "5 5 * * MON"
+    - cron: "0 12 * * FRI"
   # To allow for manual triggering:
   workflow_dispatch:
 
