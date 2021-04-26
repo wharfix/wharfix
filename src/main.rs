@@ -128,8 +128,8 @@ impl Registry {
     fn blob_discovery(&self, path: &Path) {
         self.blob_delivery.discover(path);
     }
-    fn store_blob(&self, info: BlobInfo) {
-        self.blob_delivery.store_blob(info);
+    fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
+        self.blob_delivery.store_blob(info, is_gc_rootable);
     }
 }
 
@@ -256,7 +256,7 @@ fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), exec::Exec
 }
 
 impl BlobDelivery {
-    fn store_blob(&self, info: BlobInfo) {
+    fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
         use std::os::unix::fs;
         use std::io::ErrorKind;
 
@@ -272,7 +272,7 @@ impl BlobDelivery {
                         }
                     }
                 }
-                if unsafe { ADD_NIX_GCROOTS } {
+                if is_gc_rootable && unsafe { ADD_NIX_GCROOTS } {
                     nix_add_root(&cache_path, &info.path).or_else(|e| {
                         log::error(&format!("error caching: {}", &info.name), &e);
                         Err(e)
@@ -292,7 +292,7 @@ impl BlobDelivery {
                 name,
                 content_type: file_name_to_content_type(&file_name).to_string(),
                 path: entry.path().to_path_buf()
-            });
+            }, false);
         }
     }
     fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
@@ -614,8 +614,7 @@ impl Responder for WharfixManifest {
 async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixManifest, DockerError> {
 
     //try to look up existing manifest blob
-    let existing_blob = registry.blob(&info).await
-        .and_then(|blob_info| blob_info.path.parent().map(Path::to_path_buf).ok_or(DockerError::snafu("Failed to get parent diretory of manifest.json")));
+    let existing_blob = registry.blob(&info).await.map(|blob_info| blob_info.path.to_path_buf());
 
     let path = match existing_blob {
         Ok(path) => Ok(path),
@@ -630,7 +629,13 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
 
     match path {
         Ok(path) => {
-            let fq: PathBuf = path.join("manifest.json");
+            // in most cases, the looked up path will point to the root of a store-path (directory)
+            // but in the case of pull-by-digest (i.e. @sha256:9659c3fbe84bb15369b5b4ef719872b2cfc329f60bdcb24f6a3da56fa6cbdc4d),
+            // the cached blob will point directly to the manifest file which corresponds to the digest.
+            let fq = match path.is_dir() {
+                true => path.join("manifest.json"),
+                false => path.clone()
+            };
             log::info(&format!("serving manifest from path: {:?}", &fq));
             match fs::read_to_string(&fq) {
                 Ok(manifest_str) => {
@@ -639,8 +644,8 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                         registry.store_blob(BlobInfo{
                             name: path_base_name.to_str().unwrap().to_owned(),
                             content_type: CONTENT_TYPE_MANIFEST.to_owned(),
-                            path: fq.clone()
-                        });
+                            path: path.clone()
+                        }, true);
                     });
                     Ok(WharfixManifest::new(manifest_str, fq))
                 },
