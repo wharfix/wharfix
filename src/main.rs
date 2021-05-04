@@ -592,9 +592,8 @@ impl Responder for WharfixManifest {
     type Error = Error;
     type Future = Ready<Result<HttpResponse, Error>>;
 
-    fn respond_to(self, req: &HttpRequest) -> Self::Future {
+    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
         use futures::future::ready;
-        use actix_web::http::Method;
 
         let mut builder = HttpResponse::Ok();
         let builder = builder
@@ -602,12 +601,10 @@ impl Responder for WharfixManifest {
             .header("Docker-Content-Digest", self.digest())
             .content_type(self.content_type());
 
-        // don't output actual manifest if this is a HEAD-request (finalize req-builder with empty body)
-        ready(Ok(if req.method() == Method::HEAD {
-            builder.finish()
-        } else {
-            builder.body(self.body())
-        }))
+        // Very difficult to find and kinda undocumented, but Actix will auto-set the content-length based on the response body
+        // .. and it's not possible to manually set the content-length, but at least Actix is sane enough to _not_ return the actual
+        // response body when the request type is HEAD.
+        ready(Ok(builder.body(self.body())))
     }
 }
 
