@@ -18,8 +18,9 @@ jobs:
         nix-shell --run "crate2nix generate -n '(import ./nix/sources.nix).nixpkgs' -f Cargo.toml"
     - name: Create pull request
       id: pr
-      uses: peter-evans/create-pull-request@v3.8.2
+      uses: peter-evans/create-pull-request@v3.10.0
       with:
+        author: "dbcdk-platform <81445572+dbcdk-platform@users.noreply.github.com>"
         commit-message: "bump-o-matic: update dependencies"
         branch: bump-o-matic
         delete-branch: true
