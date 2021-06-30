@@ -21,6 +21,8 @@ jobs:
       uses: peter-evans/create-pull-request@v3.10.0
       with:
         author: "dbcdk-platform <81445572+dbcdk-platform@users.noreply.github.com>"
+        committer: "dbcdk-platform <81445572+dbcdk-platform@users.noreply.github.com>"
+        github-token: ${{secrets.PAT_BUMP_O_MATIC}}
         commit-message: "bump-o-matic: update dependencies"
         branch: bump-o-matic
         delete-branch: true
