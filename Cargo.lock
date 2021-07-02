@@ -646,7 +646,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 [[package]]
 name = "dbc-rust-modules"
 version = "0.1.0"
-source = "git+https://github.com/dbcdk/rust-modules?branch=main#1624c3812889fb60581864d7489f932d07303dbf"
+source = "git+https://github.com/dbcdk/rust-modules?branch=main#dcd85580806b41cff078b2e7cad795e8e6aa748a"
 dependencies = [
  "chrono",
  "erased-serde",
@@ -2372,9 +2372,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.7.1"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb0d2e7be6ae3a5fa87eed5fb451aff96f2573d2694942e40543ae0bbe19c796"
+checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-width"
