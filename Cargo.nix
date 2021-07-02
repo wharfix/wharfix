@@ -1905,8 +1905,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/dbcdk/rust-modules";
-          rev = "1624c3812889fb60581864d7489f932d07303dbf";
-          sha256 = "1381408kqh3gw1708rgqpz32944n18rab3731phqyib12mn017nz";
+          rev = "dcd85580806b41cff078b2e7cad795e8e6aa748a";
+          sha256 = "1p2sp5qfw0kj3s5d5vnpp17y0iq34ni41p8svzzii1ch1p2ykmw9";
         };
         dependencies = [
           {
@@ -6581,9 +6581,9 @@ rec {
       };
       "unicode-segmentation" = rec {
         crateName = "unicode-segmentation";
-        version = "1.7.1";
-        edition = "2015";
-        sha256 = "15n736z0pbj30pj44jb9s9rjavzrmx8v8pzdgsl5yfmfwrxjw3dv";
+        version = "1.8.0";
+        edition = "2018";
+        sha256 = "0nrqfgxkh00wb5dhl0874z20789i2yjimp6ndgh4ay4yjjd895c8";
         authors = [
           "kwantam <kwantam@gmail.com>"
           "Manish Goregaokar <manishsmail@gmail.com>"
