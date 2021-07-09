@@ -1905,8 +1905,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/dbcdk/rust-modules";
-          rev = "dcd85580806b41cff078b2e7cad795e8e6aa748a";
-          sha256 = "1p2sp5qfw0kj3s5d5vnpp17y0iq34ni41p8svzzii1ch1p2ykmw9";
+          rev = "ca32fec2ec27f9985bbe3820d35b2c9dc33a4894";
+          sha256 = "1kq2imzm721xvjvswaqxj9lvdqjhyx39v5b4id0cp4d0iqy1azcw";
         };
         dependencies = [
           {
@@ -1955,9 +1955,9 @@ rec {
       };
       "derive_more" = rec {
         crateName = "derive_more";
-        version = "0.99.14";
+        version = "0.99.16";
         edition = "2018";
-        sha256 = "085ksssdwxrnvx9g19g9sfzgn9db8d7lx4j3ah76clg3y77bkisw";
+        sha256 = "1prq1rqk2d8z2jj2plpjn4l1i8s02caybfr0gfripkjn47fvvvj0";
         procMacro = true;
         authors = [
           "Jelte Fennema <github-tech@jeltef.nl>"
@@ -1981,8 +1981,15 @@ rec {
             packageId = "syn";
           }
         ];
+        buildDependencies = [
+          {
+            name = "rustc_version";
+            packageId = "rustc_version 0.3.3";
+            optional = true;
+          }
+        ];
         features = {
-          "default" = [ "add_assign" "add" "as_mut" "as_ref" "constructor" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "iterator" "mul_assign" "mul" "not" "sum" "try_into" "is_variant" ];
+          "default" = [ "add_assign" "add" "as_mut" "as_ref" "constructor" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "iterator" "mul_assign" "mul" "not" "sum" "try_into" "is_variant" "unwrap" ];
           "display" = [ "syn/extra-traits" ];
           "error" = [ "syn/extra-traits" ];
           "from" = [ "syn/extra-traits" ];
@@ -1994,8 +2001,9 @@ rec {
           "not" = [ "syn/extra-traits" ];
           "testing-helpers" = [ "rustc_version" ];
           "try_into" = [ "syn/extra-traits" ];
+          "unwrap" = [ "convert_case" "rustc_version" ];
         };
-        resolvedDefaultFeatures = [ "add" "add_assign" "as_mut" "as_ref" "constructor" "convert_case" "default" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "iterator" "mul" "mul_assign" "not" "sum" "try_into" ];
+        resolvedDefaultFeatures = [ "add" "add_assign" "as_mut" "as_ref" "constructor" "convert_case" "default" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "iterator" "mul" "mul_assign" "not" "rustc_version" "sum" "try_into" "unwrap" ];
       };
       "derive_utils" = rec {
         crateName = "derive_utils";
@@ -3323,7 +3331,7 @@ rec {
         buildDependencies = [
           {
             name = "rustc_version";
-            packageId = "rustc_version";
+            packageId = "rustc_version 0.2.3";
           }
         ];
         features = {
@@ -3380,7 +3388,7 @@ rec {
         buildDependencies = [
           {
             name = "rustc_version";
-            packageId = "rustc_version";
+            packageId = "rustc_version 0.2.3";
           }
         ];
         features = {
@@ -3394,9 +3402,9 @@ rec {
       };
       "libc" = rec {
         crateName = "libc";
-        version = "0.2.97";
+        version = "0.2.98";
         edition = "2015";
-        sha256 = "1dlgdziv6nkabx287jjmghnlgc5dqv6fgpvh9n7ibpr0synsvf0j";
+        sha256 = "144728k6d98k3hplzklqn18a134nq6nw0jzdxy1s98sx2xvzw31j";
         authors = [
           "The Rust Project Developers"
         ];
@@ -4530,6 +4538,24 @@ rec {
         ];
 
       };
+      "pest" = rec {
+        crateName = "pest";
+        version = "2.1.3";
+        edition = "2015";
+        sha256 = "0lry80bm90x47nq71wxq83kjrm9ashpz4kbm92p90ysdx4m8gx0h";
+        authors = [
+          "Dragoș Tiselice <dragostiselice@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "ucd-trie";
+            packageId = "ucd-trie";
+          }
+        ];
+        features = {
+          "pretty-print" = [ "serde" "serde_json" ];
+        };
+      };
       "pin-project 0.4.28" = rec {
         crateName = "pin-project";
         version = "0.4.28";
@@ -5324,7 +5350,7 @@ rec {
         ];
 
       };
-      "rustc_version" = rec {
+      "rustc_version 0.2.3" = rec {
         crateName = "rustc_version";
         version = "0.2.3";
         edition = "2015";
@@ -5335,7 +5361,23 @@ rec {
         dependencies = [
           {
             name = "semver";
-            packageId = "semver";
+            packageId = "semver 0.9.0";
+          }
+        ];
+
+      };
+      "rustc_version 0.3.3" = rec {
+        crateName = "rustc_version";
+        version = "0.3.3";
+        edition = "2018";
+        sha256 = "1vjmw7xcdri0spsf24mkpwpph853wrbqppihhw061i2igh4f5pzh";
+        authors = [
+          "Marvin Löbel <loebel.marvin@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "semver";
+            packageId = "semver 0.11.0";
           }
         ];
 
@@ -5474,7 +5516,27 @@ rec {
         };
         resolvedDefaultFeatures = [ "OSX_10_9" "default" ];
       };
-      "semver" = rec {
+      "semver 0.11.0" = rec {
+        crateName = "semver";
+        version = "0.11.0";
+        edition = "2015";
+        sha256 = "1dn6064fipjymnmjccyjhb70miyvqvp08gvw1wbg8vbg4c8ay0gk";
+        authors = [
+          "Steve Klabnik <steve@steveklabnik.com>"
+          "The Rust Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "semver-parser";
+            packageId = "semver-parser 0.10.2";
+          }
+        ];
+        features = {
+          "ci" = [ "serde" "diesel/sqlite" ];
+        };
+        resolvedDefaultFeatures = [ "default" ];
+      };
+      "semver 0.9.0" = rec {
         crateName = "semver";
         version = "0.9.0";
         edition = "2015";
@@ -5486,7 +5548,7 @@ rec {
         dependencies = [
           {
             name = "semver-parser";
-            packageId = "semver-parser";
+            packageId = "semver-parser 0.7.0";
           }
         ];
         features = {
@@ -5494,7 +5556,24 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" ];
       };
-      "semver-parser" = rec {
+      "semver-parser 0.10.2" = rec {
+        crateName = "semver-parser";
+        version = "0.10.2";
+        edition = "2018";
+        crateBin = [];
+        sha256 = "1xqijhqhx3bn77xnl1mlcp032hz8nv7n2fbdacbdzq7rnzsvxc00";
+        authors = [
+          "Steve Klabnik <steve@steveklabnik.com>"
+        ];
+        dependencies = [
+          {
+            name = "pest";
+            packageId = "pest";
+          }
+        ];
+
+      };
+      "semver-parser 0.7.0" = rec {
         crateName = "semver-parser";
         version = "0.7.0";
         edition = "2015";
@@ -6536,6 +6615,19 @@ rec {
         ];
         features = {
         };
+      };
+      "ucd-trie" = rec {
+        crateName = "ucd-trie";
+        version = "0.1.3";
+        edition = "2018";
+        sha256 = "072cblf8v3wzyaz3lhbpzgil4s03dpzg1ppy3gqx2l4v622y3pjn";
+        authors = [
+          "Andrew Gallant <jamslam@gmail.com>"
+        ];
+        features = {
+          "default" = [ "std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
       };
       "unicode-bidi" = rec {
         crateName = "unicode-bidi";
