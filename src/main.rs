@@ -388,8 +388,11 @@ impl FromRequest for Registry {
     }
 }
 
+const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
 fn main() {
+
+    log::init(APP_NAME.to_string()).unwrap();
 
     let args = clap::App::new("wharfix")
     .arg(clap::Arg::with_name("path")
