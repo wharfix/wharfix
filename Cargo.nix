@@ -1607,10 +1607,10 @@ rec {
       };
       "cc" = rec {
         crateName = "cc";
-        version = "1.0.68";
+        version = "1.0.69";
         edition = "2018";
         crateBin = [];
-        sha256 = "11ypa8b7iwhjf5fg5j3hvbn2116h9g8v67vyd9s7ljgzq52c4wja";
+        sha256 = "1cly36mskqby2yqiygls7myd0qjcfrvxcyw2cf4qdqbc5kvc4377";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -3135,9 +3135,9 @@ rec {
       };
       "instant" = rec {
         crateName = "instant";
-        version = "0.1.9";
+        version = "0.1.10";
         edition = "2018";
-        sha256 = "1v659qqm55misvjijfbl1p7azjp4yynjbwldan8836ynpgp4w4k1";
+        sha256 = "0ka75wmkh22bkxjw5smhmlwl3xpqnj2xv50w03pmgl892a5k5q5y";
         authors = [
           "sebcrozet <developer@crozet.re>"
         ];
@@ -5890,9 +5890,9 @@ rec {
       };
       "synstructure" = rec {
         crateName = "synstructure";
-        version = "0.12.4";
+        version = "0.12.5";
         edition = "2018";
-        sha256 = "00c72ij813xsilssgya6m6f73d0s5zzsld1y26bvhk3kdzbg4d5q";
+        sha256 = "1yplh90imfrp1rycnl18rg8l9d19xbmak1bq1g2065mady9aljj7";
         authors = [
           "Nika Layzell <nika@thelayzells.com>"
         ];
