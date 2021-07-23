@@ -1607,10 +1607,10 @@ rec {
       };
       "cc" = rec {
         crateName = "cc";
-        version = "1.0.68";
+        version = "1.0.69";
         edition = "2018";
         crateBin = [];
-        sha256 = "11ypa8b7iwhjf5fg5j3hvbn2116h9g8v67vyd9s7ljgzq52c4wja";
+        sha256 = "1cly36mskqby2yqiygls7myd0qjcfrvxcyw2cf4qdqbc5kvc4377";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -1905,8 +1905,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/dbcdk/rust-modules";
-          rev = "dcd85580806b41cff078b2e7cad795e8e6aa748a";
-          sha256 = "1p2sp5qfw0kj3s5d5vnpp17y0iq34ni41p8svzzii1ch1p2ykmw9";
+          rev = "22592d4465b46653a89d3bd9d34eae26c27ea410";
+          sha256 = "0s82a43lw95r5z9h2s89rw4ypcvi1h1bp0p3vy9hmxx6vddi7d4z";
         };
         dependencies = [
           {
@@ -1955,9 +1955,9 @@ rec {
       };
       "derive_more" = rec {
         crateName = "derive_more";
-        version = "0.99.14";
+        version = "0.99.16";
         edition = "2018";
-        sha256 = "085ksssdwxrnvx9g19g9sfzgn9db8d7lx4j3ah76clg3y77bkisw";
+        sha256 = "1prq1rqk2d8z2jj2plpjn4l1i8s02caybfr0gfripkjn47fvvvj0";
         procMacro = true;
         authors = [
           "Jelte Fennema <github-tech@jeltef.nl>"
@@ -1981,8 +1981,15 @@ rec {
             packageId = "syn";
           }
         ];
+        buildDependencies = [
+          {
+            name = "rustc_version";
+            packageId = "rustc_version 0.3.3";
+            optional = true;
+          }
+        ];
         features = {
-          "default" = [ "add_assign" "add" "as_mut" "as_ref" "constructor" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "iterator" "mul_assign" "mul" "not" "sum" "try_into" "is_variant" ];
+          "default" = [ "add_assign" "add" "as_mut" "as_ref" "constructor" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "iterator" "mul_assign" "mul" "not" "sum" "try_into" "is_variant" "unwrap" ];
           "display" = [ "syn/extra-traits" ];
           "error" = [ "syn/extra-traits" ];
           "from" = [ "syn/extra-traits" ];
@@ -1994,8 +2001,9 @@ rec {
           "not" = [ "syn/extra-traits" ];
           "testing-helpers" = [ "rustc_version" ];
           "try_into" = [ "syn/extra-traits" ];
+          "unwrap" = [ "convert_case" "rustc_version" ];
         };
-        resolvedDefaultFeatures = [ "add" "add_assign" "as_mut" "as_ref" "constructor" "convert_case" "default" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "iterator" "mul" "mul_assign" "not" "sum" "try_into" ];
+        resolvedDefaultFeatures = [ "add" "add_assign" "as_mut" "as_ref" "constructor" "convert_case" "default" "deref" "deref_mut" "display" "error" "from" "from_str" "index" "index_mut" "into" "into_iterator" "is_variant" "iterator" "mul" "mul_assign" "not" "rustc_version" "sum" "try_into" "unwrap" ];
       };
       "derive_utils" = rec {
         crateName = "derive_utils";
@@ -3127,9 +3135,9 @@ rec {
       };
       "instant" = rec {
         crateName = "instant";
-        version = "0.1.9";
+        version = "0.1.10";
         edition = "2018";
-        sha256 = "1v659qqm55misvjijfbl1p7azjp4yynjbwldan8836ynpgp4w4k1";
+        sha256 = "0ka75wmkh22bkxjw5smhmlwl3xpqnj2xv50w03pmgl892a5k5q5y";
         authors = [
           "sebcrozet <developer@crozet.re>"
         ];
@@ -3323,7 +3331,7 @@ rec {
         buildDependencies = [
           {
             name = "rustc_version";
-            packageId = "rustc_version";
+            packageId = "rustc_version 0.2.3";
           }
         ];
         features = {
@@ -3380,7 +3388,7 @@ rec {
         buildDependencies = [
           {
             name = "rustc_version";
-            packageId = "rustc_version";
+            packageId = "rustc_version 0.2.3";
           }
         ];
         features = {
@@ -3394,9 +3402,9 @@ rec {
       };
       "libc" = rec {
         crateName = "libc";
-        version = "0.2.97";
+        version = "0.2.98";
         edition = "2015";
-        sha256 = "1dlgdziv6nkabx287jjmghnlgc5dqv6fgpvh9n7ibpr0synsvf0j";
+        sha256 = "144728k6d98k3hplzklqn18a134nq6nw0jzdxy1s98sx2xvzw31j";
         authors = [
           "The Rust Project Developers"
         ];
@@ -4530,6 +4538,24 @@ rec {
         ];
 
       };
+      "pest" = rec {
+        crateName = "pest";
+        version = "2.1.3";
+        edition = "2015";
+        sha256 = "0lry80bm90x47nq71wxq83kjrm9ashpz4kbm92p90ysdx4m8gx0h";
+        authors = [
+          "Dragoș Tiselice <dragostiselice@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "ucd-trie";
+            packageId = "ucd-trie";
+          }
+        ];
+        features = {
+          "pretty-print" = [ "serde" "serde_json" ];
+        };
+      };
       "pin-project 0.4.28" = rec {
         crateName = "pin-project";
         version = "0.4.28";
@@ -4547,18 +4573,18 @@ rec {
         ];
 
       };
-      "pin-project 1.0.7" = rec {
+      "pin-project 1.0.8" = rec {
         crateName = "pin-project";
-        version = "1.0.7";
+        version = "1.0.8";
         edition = "2018";
-        sha256 = "1964rh32hiy5v2ircli8wv8fxq9h2nkgfalda6j407040v0rql67";
+        sha256 = "020c5nyj7qpyqn6xwy3hw6vgm31mifq9g7p916n5vihc480chssp";
         authors = [
           "Taiki Endo <te316e89@gmail.com>"
         ];
         dependencies = [
           {
             name = "pin-project-internal";
-            packageId = "pin-project-internal 1.0.7";
+            packageId = "pin-project-internal 1.0.8";
             usesDefaultFeatures = false;
           }
         ];
@@ -4590,11 +4616,11 @@ rec {
         ];
 
       };
-      "pin-project-internal 1.0.7" = rec {
+      "pin-project-internal 1.0.8" = rec {
         crateName = "pin-project-internal";
-        version = "1.0.7";
+        version = "1.0.8";
         edition = "2018";
-        sha256 = "0vs289my2262ziwxj60mnzr2k41ibga73z8yddah1dc34l9m1ja8";
+        sha256 = "12gkrjd7xzwa3vlhpzxbxlbwisi2dw8l1q62v867zkhl7lbfi3vf";
         procMacro = true;
         authors = [
           "Taiki Endo <te316e89@gmail.com>"
@@ -4692,9 +4718,9 @@ rec {
       };
       "proc-macro2" = rec {
         crateName = "proc-macro2";
-        version = "1.0.27";
+        version = "1.0.28";
         edition = "2018";
-        sha256 = "0f3h0zl5w5090ajmmvpmhkpr4iwqnn5rip3afacabhc657vwmn7h";
+        sha256 = "04k6kwfsl56xqv46f9k88jmj7x4544hhbr6xswzfm1mqqywdhzjw";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
           "David Tolnay <dtolnay@gmail.com>"
@@ -5324,7 +5350,7 @@ rec {
         ];
 
       };
-      "rustc_version" = rec {
+      "rustc_version 0.2.3" = rec {
         crateName = "rustc_version";
         version = "0.2.3";
         edition = "2015";
@@ -5335,7 +5361,23 @@ rec {
         dependencies = [
           {
             name = "semver";
-            packageId = "semver";
+            packageId = "semver 0.9.0";
+          }
+        ];
+
+      };
+      "rustc_version 0.3.3" = rec {
+        crateName = "rustc_version";
+        version = "0.3.3";
+        edition = "2018";
+        sha256 = "1vjmw7xcdri0spsf24mkpwpph853wrbqppihhw061i2igh4f5pzh";
+        authors = [
+          "Marvin Löbel <loebel.marvin@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "semver";
+            packageId = "semver 0.11.0";
           }
         ];
 
@@ -5474,7 +5516,27 @@ rec {
         };
         resolvedDefaultFeatures = [ "OSX_10_9" "default" ];
       };
-      "semver" = rec {
+      "semver 0.11.0" = rec {
+        crateName = "semver";
+        version = "0.11.0";
+        edition = "2015";
+        sha256 = "1dn6064fipjymnmjccyjhb70miyvqvp08gvw1wbg8vbg4c8ay0gk";
+        authors = [
+          "Steve Klabnik <steve@steveklabnik.com>"
+          "The Rust Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "semver-parser";
+            packageId = "semver-parser 0.10.2";
+          }
+        ];
+        features = {
+          "ci" = [ "serde" "diesel/sqlite" ];
+        };
+        resolvedDefaultFeatures = [ "default" ];
+      };
+      "semver 0.9.0" = rec {
         crateName = "semver";
         version = "0.9.0";
         edition = "2015";
@@ -5486,7 +5548,7 @@ rec {
         dependencies = [
           {
             name = "semver-parser";
-            packageId = "semver-parser";
+            packageId = "semver-parser 0.7.0";
           }
         ];
         features = {
@@ -5494,7 +5556,24 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" ];
       };
-      "semver-parser" = rec {
+      "semver-parser 0.10.2" = rec {
+        crateName = "semver-parser";
+        version = "0.10.2";
+        edition = "2018";
+        crateBin = [];
+        sha256 = "1xqijhqhx3bn77xnl1mlcp032hz8nv7n2fbdacbdzq7rnzsvxc00";
+        authors = [
+          "Steve Klabnik <steve@steveklabnik.com>"
+        ];
+        dependencies = [
+          {
+            name = "pest";
+            packageId = "pest";
+          }
+        ];
+
+      };
+      "semver-parser 0.7.0" = rec {
         crateName = "semver-parser";
         version = "0.7.0";
         edition = "2015";
@@ -5778,9 +5857,9 @@ rec {
       };
       "syn" = rec {
         crateName = "syn";
-        version = "1.0.73";
+        version = "1.0.74";
         edition = "2018";
-        sha256 = "1ixw4lscc7009ibaic8g5bvnc94hdcr62ksjk3jjl38363zqj57p";
+        sha256 = "175j336afigixhzixxs821sgw2xh38v023y2vg1qhi8dalrdhwqq";
         authors = [
           "David Tolnay <dtolnay@gmail.com>"
         ];
@@ -5811,9 +5890,9 @@ rec {
       };
       "synstructure" = rec {
         crateName = "synstructure";
-        version = "0.12.4";
+        version = "0.12.5";
         edition = "2018";
-        sha256 = "00c72ij813xsilssgya6m6f73d0s5zzsld1y26bvhk3kdzbg4d5q";
+        sha256 = "1yplh90imfrp1rycnl18rg8l9d19xbmak1bq1g2065mady9aljj7";
         authors = [
           "Nika Layzell <nika@thelayzells.com>"
         ];
@@ -6001,9 +6080,9 @@ rec {
       };
       "tinyvec" = rec {
         crateName = "tinyvec";
-        version = "1.2.0";
+        version = "1.3.1";
         edition = "2018";
-        sha256 = "0hn3fkpb9nca9nf9znz2dxlp4ccv37hnbh67aczpzpmpbgq20ljv";
+        sha256 = "0f2kkgsf1ivxdjyznzg6xlcivc99krs9584nbqxpbxmrh48ix2l4";
         authors = [
           "Lokathor <zefria@gmail.com>"
         ];
@@ -6328,7 +6407,7 @@ rec {
         dependencies = [
           {
             name = "pin-project";
-            packageId = "pin-project 1.0.7";
+            packageId = "pin-project 1.0.8";
             optional = true;
           }
           {
@@ -6536,6 +6615,19 @@ rec {
         ];
         features = {
         };
+      };
+      "ucd-trie" = rec {
+        crateName = "ucd-trie";
+        version = "0.1.3";
+        edition = "2018";
+        sha256 = "072cblf8v3wzyaz3lhbpzgil4s03dpzg1ppy3gqx2l4v622y3pjn";
+        authors = [
+          "Andrew Gallant <jamslam@gmail.com>"
+        ];
+        features = {
+          "default" = [ "std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
       };
       "unicode-bidi" = rec {
         crateName = "unicode-bidi";
