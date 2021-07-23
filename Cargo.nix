@@ -1905,8 +1905,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/dbcdk/rust-modules";
-          rev = "ca32fec2ec27f9985bbe3820d35b2c9dc33a4894";
-          sha256 = "1kq2imzm721xvjvswaqxj9lvdqjhyx39v5b4id0cp4d0iqy1azcw";
+          rev = "22592d4465b46653a89d3bd9d34eae26c27ea410";
+          sha256 = "0s82a43lw95r5z9h2s89rw4ypcvi1h1bp0p3vy9hmxx6vddi7d4z";
         };
         dependencies = [
           {
@@ -4573,18 +4573,18 @@ rec {
         ];
 
       };
-      "pin-project 1.0.7" = rec {
+      "pin-project 1.0.8" = rec {
         crateName = "pin-project";
-        version = "1.0.7";
+        version = "1.0.8";
         edition = "2018";
-        sha256 = "1964rh32hiy5v2ircli8wv8fxq9h2nkgfalda6j407040v0rql67";
+        sha256 = "020c5nyj7qpyqn6xwy3hw6vgm31mifq9g7p916n5vihc480chssp";
         authors = [
           "Taiki Endo <te316e89@gmail.com>"
         ];
         dependencies = [
           {
             name = "pin-project-internal";
-            packageId = "pin-project-internal 1.0.7";
+            packageId = "pin-project-internal 1.0.8";
             usesDefaultFeatures = false;
           }
         ];
@@ -4616,11 +4616,11 @@ rec {
         ];
 
       };
-      "pin-project-internal 1.0.7" = rec {
+      "pin-project-internal 1.0.8" = rec {
         crateName = "pin-project-internal";
-        version = "1.0.7";
+        version = "1.0.8";
         edition = "2018";
-        sha256 = "0vs289my2262ziwxj60mnzr2k41ibga73z8yddah1dc34l9m1ja8";
+        sha256 = "12gkrjd7xzwa3vlhpzxbxlbwisi2dw8l1q62v867zkhl7lbfi3vf";
         procMacro = true;
         authors = [
           "Taiki Endo <te316e89@gmail.com>"
@@ -4718,9 +4718,9 @@ rec {
       };
       "proc-macro2" = rec {
         crateName = "proc-macro2";
-        version = "1.0.27";
+        version = "1.0.28";
         edition = "2018";
-        sha256 = "0f3h0zl5w5090ajmmvpmhkpr4iwqnn5rip3afacabhc657vwmn7h";
+        sha256 = "04k6kwfsl56xqv46f9k88jmj7x4544hhbr6xswzfm1mqqywdhzjw";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
           "David Tolnay <dtolnay@gmail.com>"
@@ -5857,9 +5857,9 @@ rec {
       };
       "syn" = rec {
         crateName = "syn";
-        version = "1.0.73";
+        version = "1.0.74";
         edition = "2018";
-        sha256 = "1ixw4lscc7009ibaic8g5bvnc94hdcr62ksjk3jjl38363zqj57p";
+        sha256 = "175j336afigixhzixxs821sgw2xh38v023y2vg1qhi8dalrdhwqq";
         authors = [
           "David Tolnay <dtolnay@gmail.com>"
         ];
@@ -6080,9 +6080,9 @@ rec {
       };
       "tinyvec" = rec {
         crateName = "tinyvec";
-        version = "1.2.0";
+        version = "1.3.1";
         edition = "2018";
-        sha256 = "0hn3fkpb9nca9nf9znz2dxlp4ccv37hnbh67aczpzpmpbgq20ljv";
+        sha256 = "0f2kkgsf1ivxdjyznzg6xlcivc99krs9584nbqxpbxmrh48ix2l4";
         authors = [
           "Lokathor <zefria@gmail.com>"
         ];
@@ -6407,7 +6407,7 @@ rec {
         dependencies = [
           {
             name = "pin-project";
-            packageId = "pin-project 1.0.7";
+            packageId = "pin-project 1.0.8";
             optional = true;
           }
           {
