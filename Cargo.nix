@@ -1399,7 +1399,7 @@ rec {
         dependencies = [
           {
             name = "num-bigint";
-            packageId = "num-bigint 0.2.6";
+            packageId = "num-bigint";
           }
           {
             name = "num-integer";
@@ -1602,10 +1602,10 @@ rec {
       };
       "cc" = rec {
         crateName = "cc";
-        version = "1.0.69";
+        version = "1.0.70";
         edition = "2018";
         crateBin = [];
-        sha256 = "1cly36mskqby2yqiygls7myd0qjcfrvxcyw2cf4qdqbc5kvc4377";
+        sha256 = "1h0dm9pr7l2g6228pzl5fawd43s3zjkfzxvhvczgm154nvj6qsnj";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -1900,8 +1900,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/dbcdk/rust-modules";
-          rev = "cf937adb83f24aff58a86e7a5b002b592a5c004c";
-          sha256 = "0kq55mp8f852b144j0jlmmgkhkfkg5asxcad8zxd1cw25sx8nl8s";
+          rev = "6046d981c1fcc7942a0464e8fa631e4d08a10512";
+          sha256 = "0f6zmw6s55qc19v34wv1ba84crvfzfvzr801grzcvhqbz3lj58hg";
         };
         dependencies = [
           {
@@ -2206,9 +2206,9 @@ rec {
       };
       "flate2" = rec {
         crateName = "flate2";
-        version = "1.0.20";
+        version = "1.0.21";
         edition = "2018";
-        sha256 = "1q5b4r2rclhjbcxlbv5231avp1y6y8bynrf5v3brdzhhvr9yqfnd";
+        sha256 = "04d83lrdia78vcd95n2gg0ababps3jmlyqi1hlvznika87nszvc0";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
           "Josh Triplett <josh@joshtriplett.org>"
@@ -2357,9 +2357,9 @@ rec {
       };
       "futures" = rec {
         crateName = "futures";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "12rznp5gg0sf3w2ly2zbcm4shnhcdy1igmvpkzlrrz5dhvs01p0s";
+        sha256 = "1jk6znbqrmb6xkgs4g0s7ivv1djq7dyaci9d7xfdb04hagms0am1";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2421,9 +2421,9 @@ rec {
       };
       "futures-channel" = rec {
         crateName = "futures-channel";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "1yczc8hdwaa7lw52bh2xnarqjfs2bmfwj169kcylwvjzh08j9vbl";
+        sha256 = "121q4y5c10vihzgcb6fvp0gwzyh4hg6c37riqz9nbhdk7f6bm9jx";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2450,9 +2450,9 @@ rec {
       };
       "futures-core" = rec {
         crateName = "futures-core";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "168zy072rgzkvi3hsbjzhn8ynwy60a4dwffv0cvh7zzxlysb2ldg";
+        sha256 = "0gd5hfxcy5fqc3wm55a4yhcbh921wvzv09nkbhwh6dpjaxlw5lc8";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2464,9 +2464,9 @@ rec {
       };
       "futures-executor" = rec {
         crateName = "futures-executor";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "073nakpp5z0irlkqgr0fgcnwv47f79qr5f1p2kiilzmqaxd563ad";
+        sha256 = "0p3lv18dr90c032yrr4k833npp23a0spykvq4lq7d7cn63h5n0j5";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2496,9 +2496,9 @@ rec {
       };
       "futures-io" = rec {
         crateName = "futures-io";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "10hms4pzsxay7s9qclp78xis9mlklzf5ris6y9p3m3q6jg1hc3hb";
+        sha256 = "0xrk0xsrmhxrndhby79j31mkzbwg21s09fkpqldhyf1yzshf4baj";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2509,9 +2509,9 @@ rec {
       };
       "futures-macro" = rec {
         crateName = "futures-macro";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "0mxcw0hjsx78zd0r1wz3928ycwmac81wjvywykvqvysnx6x16jf5";
+        sha256 = "1fvriw31ippggp8496dpbvkykr2fgk57amhwrz5lqjzabjws9r0q";
         procMacro = true;
         authors = [
           "Taylor Cramer <cramertj@google.com>"
@@ -2546,9 +2546,9 @@ rec {
       };
       "futures-sink" = rec {
         crateName = "futures-sink";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "0lsbxbz72a82hyld35wz69k7l6i07krsafkl2ac12g9ncym0mwy0";
+        sha256 = "04dwqbcwxil6iyv7fif2xjncz849mm63sghbb60f8kq22cy1bsin";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2560,9 +2560,9 @@ rec {
       };
       "futures-task" = rec {
         crateName = "futures-task";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "1wlr0yl3vjk24281n1iz3yjxj4782fnzcqcmj2zg65q0cyc4mrdv";
+        sha256 = "169fi44d8sbfpkkyhncj0pgkp1amrllg5523lncf8wyvxps00g8x";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -2574,9 +2574,9 @@ rec {
       };
       "futures-util" = rec {
         crateName = "futures-util";
-        version = "0.3.16";
+        version = "0.3.17";
         edition = "2018";
-        sha256 = "0y2dvm4r5cbw0mqw138zssswrq235kl4j050h624mr2qzmmq9sv7";
+        sha256 = "10al5ci74s6rk2d2wqqya0d4fwc6sqv525hzbvj6wfha45jq8min";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
         ];
@@ -3577,9 +3577,9 @@ rec {
       };
       "lock_api" = rec {
         crateName = "lock_api";
-        version = "0.4.4";
+        version = "0.4.5";
         edition = "2018";
-        sha256 = "1sq7pw7h7jbfvnv5nq3vm912gdwhhv8idi3njifd3xnz0q38i0h3";
+        sha256 = "028izfyraynijd9h9x5miv1vmg6sjnw1v95wgm7f4xlr7h4lsaki";
         authors = [
           "Amanieu d'Antras <amanieu@gmail.com>"
         ];
@@ -3981,7 +3981,7 @@ rec {
           }
           {
             name = "num-bigint";
-            packageId = "num-bigint 0.2.6";
+            packageId = "num-bigint";
             features = [ "i128" ];
           }
           {
@@ -4202,61 +4202,7 @@ rec {
           "use_union" = [ "nodrop-union" ];
         };
       };
-      "num" = rec {
-        crateName = "num";
-        version = "0.4.0";
-        edition = "2018";
-        sha256 = "01j6k8kjad0a96297j3qjhdhrc6cgmzhf52i0sd7yd0d2z8ndns3";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "num-bigint";
-            packageId = "num-bigint 0.4.0";
-            optional = true;
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "num-complex";
-            packageId = "num-complex";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "num-integer";
-            packageId = "num-integer";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-          {
-            name = "num-iter";
-            packageId = "num-iter";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-          {
-            name = "num-rational";
-            packageId = "num-rational";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "num-traits";
-            packageId = "num-traits";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-        ];
-        features = {
-          "alloc" = [ "num-bigint" "num-rational/num-bigint" ];
-          "default" = [ "std" ];
-          "libm" = [ "num-complex/libm" "num-traits/libm" ];
-          "rand" = [ "num-bigint/rand" "num-complex/rand" ];
-          "serde" = [ "num-bigint/serde" "num-complex/serde" "num-rational/serde" ];
-          "std" = [ "num-bigint/std" "num-complex/std" "num-integer/std" "num-iter/std" "num-rational/std" "num-rational/num-bigint-std" "num-traits/std" ];
-        };
-        resolvedDefaultFeatures = [ "default" "num-bigint" "std" ];
-      };
-      "num-bigint 0.2.6" = rec {
+      "num-bigint" = rec {
         crateName = "num-bigint";
         version = "0.2.6";
         edition = "2015";
@@ -4289,63 +4235,6 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "i128" "std" ];
       };
-      "num-bigint 0.4.0" = rec {
-        crateName = "num-bigint";
-        version = "0.4.0";
-        edition = "2018";
-        sha256 = "04k5xh7d0nxay4yfb02rj841y9g5jh45d320avi53ak221y083af";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "num-integer";
-            packageId = "num-integer";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-          {
-            name = "num-traits";
-            packageId = "num-traits";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-        ];
-        buildDependencies = [
-          {
-            name = "autocfg";
-            packageId = "autocfg 1.0.1";
-          }
-        ];
-        features = {
-          "default" = [ "std" ];
-          "std" = [ "num-integer/std" "num-traits/std" ];
-        };
-        resolvedDefaultFeatures = [ "std" ];
-      };
-      "num-complex" = rec {
-        crateName = "num-complex";
-        version = "0.4.0";
-        edition = "2018";
-        sha256 = "11ahq51ibf7x30rsabgp3a29zw6d6bfilz53sj152z5vpdkkd1r6";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "num-traits";
-            packageId = "num-traits";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-        ];
-        features = {
-          "default" = [ "std" ];
-          "libm" = [ "num-traits/libm" ];
-          "std" = [ "num-traits/std" ];
-        };
-        resolvedDefaultFeatures = [ "std" ];
-      };
       "num-integer" = rec {
         crateName = "num-integer";
         version = "0.1.44";
@@ -4373,80 +4262,6 @@ rec {
           "std" = [ "num-traits/std" ];
         };
         resolvedDefaultFeatures = [ "default" "i128" "std" ];
-      };
-      "num-iter" = rec {
-        crateName = "num-iter";
-        version = "0.1.42";
-        edition = "2015";
-        sha256 = "0ndd9wb9qar50fdr16xm3i1zk6h2g9br56nml2n22kd56y1iq0mj";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "num-integer";
-            packageId = "num-integer";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "num-traits";
-            packageId = "num-traits";
-            usesDefaultFeatures = false;
-          }
-        ];
-        buildDependencies = [
-          {
-            name = "autocfg";
-            packageId = "autocfg 1.0.1";
-          }
-        ];
-        features = {
-          "default" = [ "std" ];
-          "i128" = [ "num-integer/i128" "num-traits/i128" ];
-          "std" = [ "num-integer/std" "num-traits/std" ];
-        };
-        resolvedDefaultFeatures = [ "i128" "std" ];
-      };
-      "num-rational" = rec {
-        crateName = "num-rational";
-        version = "0.4.0";
-        edition = "2018";
-        sha256 = "0ska19zb05f84b1cki7vyzy5wjqs26y82hiq1d9gabbw2syh45yl";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "num-bigint";
-            packageId = "num-bigint 0.4.0";
-            optional = true;
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "num-integer";
-            packageId = "num-integer";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-          {
-            name = "num-traits";
-            packageId = "num-traits";
-            usesDefaultFeatures = false;
-            features = [ "i128" ];
-          }
-        ];
-        buildDependencies = [
-          {
-            name = "autocfg";
-            packageId = "autocfg 1.0.1";
-          }
-        ];
-        features = {
-          "default" = [ "num-bigint-std" "std" ];
-          "num-bigint-std" = [ "num-bigint/std" ];
-          "std" = [ "num-integer/std" "num-traits/std" ];
-        };
-        resolvedDefaultFeatures = [ "num-bigint" "num-bigint-std" "std" ];
       };
       "num-traits" = rec {
         crateName = "num-traits";
@@ -4490,9 +4305,9 @@ rec {
       };
       "object" = rec {
         crateName = "object";
-        version = "0.26.1";
+        version = "0.26.2";
         edition = "2018";
-        sha256 = "0z2c22kdi1cin7567sddwacs3ckbqpzbgyqbs0vrkl4990h6c9zf";
+        sha256 = "1hmbm3zn48g510y4m3h3nqxnvrzlcfrbbg09dlxx5jiw0x87xwrr";
         dependencies = [
           {
             name = "memchr";
@@ -4629,9 +4444,9 @@ rec {
       };
       "parking_lot" = rec {
         crateName = "parking_lot";
-        version = "0.11.1";
+        version = "0.11.2";
         edition = "2018";
-        sha256 = "1sqmgaia8zfd5fbnqw2w13ijh7crk3lf9vw4cb52vwlx0an48xvd";
+        sha256 = "16gzf41bxmm10x82bla8d6wfppy9ym3fxsmdjyvn61m66s0bf5vx";
         authors = [
           "Amanieu d'Antras <amanieu@gmail.com>"
         ];
@@ -4650,6 +4465,7 @@ rec {
           }
         ];
         features = {
+          "arc_lock" = [ "lock_api/arc_lock" ];
           "deadlock_detection" = [ "parking_lot_core/deadlock_detection" ];
           "nightly" = [ "parking_lot_core/nightly" "lock_api/nightly" ];
           "owning_ref" = [ "lock_api/owning_ref" ];
@@ -4661,9 +4477,9 @@ rec {
       };
       "parking_lot_core" = rec {
         crateName = "parking_lot_core";
-        version = "0.8.3";
+        version = "0.8.5";
         edition = "2018";
-        sha256 = "065hkylji0g0fkh1vqp7kzs74vclhsxcczwhwqzpcig770lphyps";
+        sha256 = "05ij4zxsylx99srbq8qd1k2wiwaq8krkf9y4cqkhvb5wjca8wvnp";
         authors = [
           "Amanieu d'Antras <amanieu@gmail.com>"
         ];
@@ -4892,9 +4708,9 @@ rec {
       };
       "proc-macro2" = rec {
         crateName = "proc-macro2";
-        version = "1.0.28";
+        version = "1.0.29";
         edition = "2018";
-        sha256 = "04k6kwfsl56xqv46f9k88jmj7x4544hhbr6xswzfm1mqqywdhzjw";
+        sha256 = "0gfj25ksq90ifcssfnwv46v856sxd885wmm9bhrj1ays9xfi1xdr";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
           "David Tolnay <dtolnay@gmail.com>"
@@ -5621,9 +5437,9 @@ rec {
       };
       "security-framework" = rec {
         crateName = "security-framework";
-        version = "2.4.0";
+        version = "2.4.2";
         edition = "2018";
-        sha256 = "19cjniqcs8jgkikcxlmz1cwlxks0z5c11ibi9yq7b27vvyfd56sv";
+        sha256 = "11vwvw2qnrf1z8i0ncbj9456vxwnwq9wyi9c2n6rkqd2znmw2nsj";
         authors = [
           "Steven Fackler <sfackler@gmail.com>"
           "Kornel <kornel@geekhood.net>"
@@ -5646,10 +5462,6 @@ rec {
             packageId = "libc";
           }
           {
-            name = "num";
-            packageId = "num";
-          }
-          {
             name = "security-framework-sys";
             packageId = "security-framework-sys";
             usesDefaultFeatures = false;
@@ -5659,18 +5471,19 @@ rec {
           "OSX_10_10" = [ "OSX_10_9" "security-framework-sys/OSX_10_10" ];
           "OSX_10_11" = [ "OSX_10_10" "security-framework-sys/OSX_10_11" ];
           "OSX_10_12" = [ "OSX_10_11" "security-framework-sys/OSX_10_12" ];
-          "OSX_10_13" = [ "OSX_10_12" "security-framework-sys/OSX_10_13" "alpn" "session-tickets" ];
+          "OSX_10_13" = [ "OSX_10_12" "security-framework-sys/OSX_10_13" "alpn" "session-tickets" "serial-number-bigint" ];
           "OSX_10_14" = [ "OSX_10_13" "security-framework-sys/OSX_10_14" ];
           "OSX_10_9" = [ "security-framework-sys/OSX_10_9" ];
           "default" = [ "OSX_10_9" ];
+          "serial-number-bigint" = [ "num-bigint" ];
         };
         resolvedDefaultFeatures = [ "OSX_10_9" "default" ];
       };
       "security-framework-sys" = rec {
         crateName = "security-framework-sys";
-        version = "2.4.0";
+        version = "2.4.2";
         edition = "2018";
-        sha256 = "1y56rva4ly5x3zbzjmavsjz4gzdiriv4cp0n3hqw6k29dql3l4qr";
+        sha256 = "0zlwc46mb7zkm4ngq5qv52zczvvk0l8kjr6npyvjidb067c19pd9";
         authors = [
           "Steven Fackler <sfackler@gmail.com>"
           "Kornel <kornel@geekhood.net>"
@@ -5764,9 +5577,9 @@ rec {
       };
       "serde" = rec {
         crateName = "serde";
-        version = "1.0.129";
+        version = "1.0.130";
         edition = "2015";
-        sha256 = "1wgqi7j6szk736wj61gjvbplx3lx7cx4gnlf2x9khxdas8v2ixyi";
+        sha256 = "04y9s1mxcxakg9bhfdiff9w4zzprk6m6dazcpmpi8nfg6zg0cbgi";
         authors = [
           "Erick Tryzelaar <erick.tryzelaar@gmail.com>"
           "David Tolnay <dtolnay@gmail.com>"
@@ -5792,9 +5605,9 @@ rec {
       };
       "serde_derive" = rec {
         crateName = "serde_derive";
-        version = "1.0.129";
+        version = "1.0.130";
         edition = "2015";
-        sha256 = "1ws9lbqbn36wn22vyyil9rhq7hns19nm32sm4xjabn9ksmxfhyp5";
+        sha256 = "12shxhi47db54i4j44ic2nl299x5p89ngna0w3m6854nn4d1mg6p";
         procMacro = true;
         authors = [
           "Erick Tryzelaar <erick.tryzelaar@gmail.com>"
@@ -5820,9 +5633,9 @@ rec {
       };
       "serde_json" = rec {
         crateName = "serde_json";
-        version = "1.0.66";
+        version = "1.0.67";
         edition = "2018";
-        sha256 = "09r1ld450g6hbx5xs2j7bcp40ibawayhx1wxnnad0am137d10srk";
+        sha256 = "0l69qli7apsk2x5sm54lclk9v8ih9mp5ywjxpkl0qg3wqa8f7yd7";
         authors = [
           "Erick Tryzelaar <erick.tryzelaar@gmail.com>"
           "David Tolnay <dtolnay@gmail.com>"
@@ -6784,9 +6597,9 @@ rec {
       };
       "typenum" = rec {
         crateName = "typenum";
-        version = "1.13.0";
+        version = "1.14.0";
         edition = "2018";
-        sha256 = "01lbbspn4080yg8wp6y7q3xcqih1c1dmkkx4pwax4z1a9436k7w7";
+        sha256 = "1v2r349b2dr0pknpjk3nkrbi3mhaa3wl7zi7bdbla4zmcni0hdxn";
         build = "build/main.rs";
         authors = [
           "Paho Lurie-Gregg <paho@paholg.com>"
