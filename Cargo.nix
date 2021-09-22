@@ -2794,9 +2794,9 @@ rec {
       };
       "git2" = rec {
         crateName = "git2";
-        version = "0.13.22";
+        version = "0.13.21";
         edition = "2018";
-        sha256 = "15s1bbp6x5ncfib0xfyd9ypm7inj53wcmd62hapwd5hrkbybn74w";
+        sha256 = "141l150xi60fxfp41dkcmbq3qxh66m361dm5vgcn8nz76m4d3735";
         authors = [
           "Josh Triplett <josh@joshtriplett.org>"
           "Alex Crichton <alex@alexcrichton.com>"
@@ -2840,7 +2840,6 @@ rec {
           "https" = [ "libgit2-sys/https" "openssl-sys" "openssl-probe" ];
           "ssh" = [ "libgit2-sys/ssh" ];
           "ssh_key_from_memory" = [ "libgit2-sys/ssh_key_from_memory" ];
-          "vendored-libgit2" = [ "libgit2-sys/vendored" ];
           "vendored-openssl" = [ "openssl-sys/vendored" "libgit2-sys/vendored-openssl" ];
           "zlib-ng-compat" = [ "libgit2-sys/zlib-ng-compat" ];
         };
@@ -3408,9 +3407,9 @@ rec {
       };
       "libgit2-sys" = rec {
         crateName = "libgit2-sys";
-        version = "0.12.23+1.2.0";
+        version = "0.12.22+1.1.0";
         edition = "2018";
-        sha256 = "0mik8mlzjfljf89g7qxslsvsaifc11lb8y3h22rrswdfbd20lwr9";
+        sha256 = "1hx1lk3yvpqi3w6jrv291q0wdywd6y0md3wdmm170ky42z0kmic9";
         libName = "libgit2_sys";
         libPath = "lib.rs";
         authors = [
