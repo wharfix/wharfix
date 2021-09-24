@@ -3035,9 +3035,9 @@ rec {
       };
       "http" = rec {
         crateName = "http";
-        version = "0.2.4";
+        version = "0.2.5";
         edition = "2018";
-        sha256 = "04fcnqbnqmrsnphz5lbca2plascsm8bib5csd518bqj7qyd8qzjj";
+        sha256 = "0sqqidxilz83h3nr9g3hwsa0z34mh6clrrdfvvd2f66l0mmhj8qk";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
           "Carl Lerche <me@carllerche.com>"
@@ -3125,9 +3125,9 @@ rec {
       };
       "instant" = rec {
         crateName = "instant";
-        version = "0.1.10";
+        version = "0.1.11";
         edition = "2018";
-        sha256 = "0ka75wmkh22bkxjw5smhmlwl3xpqnj2xv50w03pmgl892a5k5q5y";
+        sha256 = "1g8n89lahcaj5ris8f4ki3x7cfscbwwkbmpfs17s7ijsyf4ksvbi";
         authors = [
           "sebcrozet <developer@crozet.re>"
         ];
@@ -3407,9 +3407,9 @@ rec {
       };
       "libgit2-sys" = rec {
         crateName = "libgit2-sys";
-        version = "0.12.22+1.1.0";
+        version = "0.12.23+1.2.0";
         edition = "2018";
-        sha256 = "1hx1lk3yvpqi3w6jrv291q0wdywd6y0md3wdmm170ky42z0kmic9";
+        sha256 = "0mik8mlzjfljf89g7qxslsvsaifc11lb8y3h22rrswdfbd20lwr9";
         libName = "libgit2_sys";
         libPath = "lib.rs";
         authors = [
@@ -4404,9 +4404,9 @@ rec {
       };
       "openssl-sys" = rec {
         crateName = "openssl-sys";
-        version = "0.9.66";
+        version = "0.9.67";
         edition = "2015";
-        sha256 = "10nwcz53h9zznq46g6nfqqd4wgw388akzig03q6vfqg50p9x55hr";
+        sha256 = "0n5023ri01wfx54rr1zndi8qda6mhzscdpj09gsamqvczj6jvpv9";
         build = "build/main.rs";
         authors = [
           "Alex Crichton <alex@alexcrichton.com>"
@@ -5847,9 +5847,9 @@ rec {
       };
       "syn" = rec {
         crateName = "syn";
-        version = "1.0.76";
+        version = "1.0.77";
         edition = "2018";
-        sha256 = "110vb9zy9fvijppwpalz5qh9g4g6y0m4vgrd4iaj0b1c83dhgwf6";
+        sha256 = "1870dx7d4h54w2qiczlx66d6snbmvkla9zhcj2ap9xgyw1lbqfaj";
         authors = [
           "David Tolnay <dtolnay@gmail.com>"
         ];
@@ -6324,9 +6324,9 @@ rec {
       };
       "tracing" = rec {
         crateName = "tracing";
-        version = "0.1.27";
+        version = "0.1.28";
         edition = "2018";
-        sha256 = "0zj33bpwhlb1p7r1hhfagxd2sfzvqkjsbzcdcfl9fr3x5fv9mfn2";
+        sha256 = "1a5xmjns2lwfvk4j6na0w7s63nzandfdy3f2hyb430hcbh4nxyc4";
         authors = [
           "Eliza Weisman <eliza@buoyant.io>"
           "Tokio Contributors <team@tokio.rs>"
