@@ -23,7 +23,7 @@ pub enum MainError {
 #[derive(Debug)]
 pub enum RepoError {
     Exec(ExecErrorInfo),
-    Git(git2::ErrorCode),
+    Git(git2::Error),
     IndexFile(std::io::Error),
     ImageNotFound,
     BlobNotFound,
@@ -91,8 +91,11 @@ impl DockerErrorDetails for RepoError {
     }
     fn docker_message(&self, info: &FetchInfo) -> String {
         match self {
-            RepoError::Git(git2::ErrorCode::NotFound) => format!("git ref: {} not found", &info.reference),
-            RepoError::Git(_) => "unknown git error".to_string(),
+            RepoError::Git(e) => if e.code() == git2::ErrorCode::NotFound {
+                format!("git ref: {} not found", &info.reference)
+            } else {
+                "unknown git error".to_string()
+            }
             RepoError::IndexFile(_) => "failed to read repository index file: /default.nix".to_string(),
             RepoError::IndexAttributeNotFound => format!("attribute: {} not found in repository index: /default.nix", &info.name),
             RepoError::ImageNotFound => format!("image with name: {} and reference: {} not found", &info.reference, &info.name),
@@ -183,6 +186,6 @@ impl std::convert::From<RepoError> for actix_web::error::Error {
 
 impl std::convert::From<git2::Error> for RepoError {
     fn from(err: git2::Error) -> Self {
-        RepoError::Git(err.code())
+        RepoError::Git(err)
     }
 }
