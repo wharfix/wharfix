@@ -475,7 +475,7 @@ fn main() {
         fs::create_dir(&target_dir).or_else(|e| -> Result<(), std::io::Error> {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => Ok(()),
-                e => panic!(format!("couldn't create target dir: {:?}, error: {:?}", target_dir, e))
+                e => panic!("{}", &format!("couldn't create target dir: {:?}, error: {:?}", target_dir, e))
             }
         }).unwrap();
 
@@ -718,13 +718,13 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     let clone_target = root_dir.join(pathname_generator(name, url));
 
     Ok(if clone_target.exists() {
-        Repository::open_bare(&clone_target).or_else(|e| Err(RepoError::Git(e.code())))
+        Repository::open_bare(&clone_target).or_else(|e| Err(RepoError::Git(e)))
     } else {
         log::info(&format!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target));
         let mut rb = RepoBuilder::new();
         rb.fetch_options(fetch_options());
         rb.bare(true);
-        rb.clone(url, &clone_target).or_else(|e| Err(RepoError::Git(e.code())))
+        rb.clone(url, &clone_target).or_else(|e| Err(RepoError::Git(e)))
     }?)
 }
 
@@ -745,9 +745,9 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Resu
 
     let obj = repo.revparse_single(reference.as_str()).or_else(|_| {
         let rev = format!("refs/remotes/origin/{reference}",reference=&reference);
-        repo.revparse_single(rev.as_str()).or_else(|e| Err(RepoError::Git(e.code())))
+        repo.revparse_single(rev.as_str()).or_else(|e| Err(RepoError::Git(e)))
     })?;
-    repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(e.code())))?;
+    repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(e)))?;
     Ok(())
 }
 
