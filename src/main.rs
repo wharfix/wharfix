@@ -62,6 +62,7 @@ static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
+static mut SSH_PUBLIC_KEY: Option<PathBuf> = None;
 static mut ADD_NIX_GCROOTS: bool = false;
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
@@ -446,6 +447,12 @@ fn main() {
         .help("Path to optional ssh private key file")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("sshpublickey")
+        .long("ssh-public-key")
+        .help("Path to optional ssh public key file")
+        .takes_value(true)
+        .required(false)
+        .requires("sshprivatekey")) // public key makes no sence if there isn't a private key
     .arg(clap::Arg::with_name("addnixgcroots")
         .long("add-nix-gcroots")
         .help("Whether to add nix gcroots for blobs cached in blob cache dir")
@@ -496,7 +503,8 @@ fn main() {
             }
         };
 
-        let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
+        let ssh_priv = m.value_of("sshprivatekey").map(PathBuf::from);
+        let ssh_pub = m.value_of("sshpublickey").map(PathBuf::from);
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
@@ -505,7 +513,8 @@ fn main() {
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
-            SSH_PRIVATE_KEY = fo;
+            SSH_PRIVATE_KEY = ssh_priv;
+            SSH_PUBLIC_KEY = ssh_pub;
             ADD_NIX_GCROOTS = m.is_present("addnixgcroots");
         }
 
@@ -755,13 +764,17 @@ fn fetch_options<'l>() -> FetchOptions<'l> {
     let mut fo = FetchOptions::new();
 
     match unsafe { SSH_PRIVATE_KEY.as_ref() } {
-        Some(key) => {
+        Some(private_key) => {
+
+            // if supplied a public key in config, use that, otherwise git2 will try to derive it from the private key
+            let public_key = unsafe { SSH_PUBLIC_KEY.as_ref().map(|p| p.as_path()) };
+
             let mut callbacks = RemoteCallbacks::new();
             callbacks.credentials(move |_url, username_from_url, _allowed_types| {
                 Cred::ssh_key(
                     username_from_url.unwrap(),
-                    None,
-                    std::path::Path::new(&key.to_owned()),
+                    public_key,
+                    &private_key,
                     None,
                 )
             });
