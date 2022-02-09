@@ -19,7 +19,10 @@ let
     MANIFESTJSON="$MANIFESTJSON, "'"config": { "mediaType": "application/vnd.docker.container.image.v1+json", "digest": "sha256:'"$CONFSUM"'", "size": '"$CONFSIZE"' }, "layers": [] }'
 
     for L in $(cat $out/raw/manifest.json |jq -r '.[].Layers[]'); do
-      OUTNAME="$(dirname $L)"
+      OUTNAME="$(basename $L)"
+      if [[ $OUTNAME == layer.tar ]]; then
+        OUTNAME="$(dirname $L)"
+      fi
       OUTSIZE="$(wc -c $out/raw/$L | awk '{ print $1 }')"
       ln -s "$out/raw/$L" "$out/blobs/$OUTNAME.difftar"
       MANIFESTJSON=$(echo "$MANIFESTJSON" | jq '.layers += [{ "mediaType": "application/vnd.docker.image.rootfs.diff.tar", "digest": "sha256:'"$OUTNAME"'", "size": '"$OUTSIZE"' }]')
