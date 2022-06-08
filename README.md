@@ -10,7 +10,9 @@ You'll need to have Nix installed, see: https://nixos.org/download.html
 
 ## Quick start
 
-Checkout this repo and run: `nix-shell --run 'cargo run -- --repo https://github.com/wharfix/examples.git --port 8080'`
+Checkout this repo and run: `nix develop`.
+
+When in the dev-shell, run: `cargo run -- --repo https://github.com/wharfix/examples.git --port 8080`
 
 This will start a registry serving at localhost port 8080, serving expressions stored in the root of `./examples`.
 
