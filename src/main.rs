@@ -3,9 +3,11 @@ use actix_web::http::StatusCode;
 use std::collections::HashMap;
 use std::string::String;
 
-use actix_web::{App, HttpServer, middleware, Responder, web, FromRequest, HttpRequest, HttpResponse, Error};
+use actix_web::{App, HttpServer, middleware, Responder, web, FromRequest, HttpRequest, HttpResponse};
 
-use actix_web::dev::{HttpResponseBuilder, Service};
+use actix_web::dev::Service;
+use actix_web::HttpResponseBuilder;
+use actix_web::body::BoxBody;
 use std::path::{Path, PathBuf};
 use std::fs;
 use walkdir::WalkDir;
@@ -369,7 +371,6 @@ impl ServeType {
 impl FromRequest for Registry {
     type Error = DockerError;
     type Future = Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
     fn from_request(req: &HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
         let host = req.headers().get("HOST").and_then(|hv| hv.to_str().ok()).unwrap_or("");
@@ -542,7 +543,7 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
 
 async fn version(_registry: Registry) -> impl Responder {
     HttpResponseBuilder::new(StatusCode::OK)
-        .header("Docker-Distribution-API-Version", "registry/2.0")
+        .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
         .finish()
 }
 
@@ -584,22 +585,20 @@ impl WharfixManifest {
 }
 
 impl Responder for WharfixManifest {
-    type Error = Error;
-    type Future = Ready<Result<HttpResponse, Error>>;
+    type Body = BoxBody;
 
-    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
-        use futures::future::ready;
+    fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
 
         let mut builder = HttpResponse::Ok();
         let builder = builder
-            .header("Docker-Distribution-API-Version", "registry/2.0")
-            .header("Docker-Content-Digest", self.digest())
+            .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
+            .append_header(("Docker-Content-Digest", self.digest()))
             .content_type(self.content_type());
 
         // Very difficult to find and kinda undocumented, but Actix will auto-set the content-length based on the response body
         // .. and it's not possible to manually set the content-length, but at least Actix is sane enough to _not_ return the actual
         // response body when the request type is HEAD.
-        ready(Ok(builder.body(self.body())))
+        builder.body(self.body()).into()
     }
 }
 
@@ -657,16 +656,13 @@ struct WharfixBlob {
 }
 
 impl Responder for WharfixBlob {
-    type Error = Error;
-    type Future = Ready<Result<HttpResponse, Error>>;
+    type Body = BoxBody;
 
-    fn respond_to(self, _req: &HttpRequest) -> Self::Future {
-        use futures::future::ready;
-
-        ready(Ok(HttpResponse::Ok()
-            .header("Docker-Distribution-API-Version", "registry/2.0")
+    fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
+        HttpResponse::Ok()
+            .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
             .content_type(self.content_type.as_str())
-            .body(self.blob)))
+            .body(self.blob)
     }
 }
 

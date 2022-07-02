@@ -5,6 +5,10 @@ use crate::FetchInfo;
 
 use serde::Serialize;
 use serde_json::json;
+use actix_web::HttpResponse;
+use actix_web::body::BoxBody;
+use actix_web::http::StatusCode;
+use actix_web::ResponseError;
 
 use crate::log;
 
@@ -160,13 +164,22 @@ impl DockerError {
     }
 }
 
-impl std::convert::Into<actix_web::error::Error> for DockerError {
-    fn into(self) -> actix_web::error::Error {
-        use actix_web::web::HttpResponse;
+impl std::fmt::Display for DockerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl ResponseError for DockerError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::NOT_FOUND
+    }
+
+    fn error_response(&self) -> HttpResponse<BoxBody> {
         let errors = vec!(self);
         let errors = json!({ "errors": errors });
         HttpResponse::NotFound()
-            .header("Docker-Distribution-API-Version", "registry/2.0")
+            .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
             .json(errors)
             .into()
     }
