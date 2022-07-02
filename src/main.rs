@@ -1,14 +1,3 @@
-extern crate actix_web;
-extern crate clap;
-#[macro_use] extern crate serde_derive;
-#[macro_use] extern crate serde_json;
-#[macro_use] extern crate lazy_static;
-#[macro_use] extern crate mysql;
-extern crate tokio;
-extern crate uuid;
-extern crate linereader;
-extern crate tempdir;
-extern crate regex;
 
 use actix_web::http::StatusCode;
 use std::collections::HashMap;
@@ -16,8 +5,7 @@ use std::string::String;
 
 use actix_web::{App, HttpServer, middleware, Responder, web, FromRequest, HttpRequest, HttpResponse, Error};
 
-use crate::actix_web::dev::Service;
-use actix_web::dev::{HttpResponseBuilder};
+use actix_web::dev::{HttpResponseBuilder, Service};
 use std::path::{Path, PathBuf};
 use std::fs;
 use walkdir::WalkDir;
@@ -45,12 +33,17 @@ use futures::future::{ok, err, Ready};
 
 use regex::Regex;
 use mysql::Pool;
-use crate::mysql::prelude::Queryable;
 
 use tempfile::NamedTempFile;
 use std::ffi::OsStr;
 
 use dbc_rust_modules::{exec, log};
+
+use serde::Deserialize;
+use lazy_static::lazy_static;
+use serde_json::json;
+use mysql::params;
+use mysql::prelude::Queryable;
 
 mod errors;
 

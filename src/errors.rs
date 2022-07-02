@@ -4,6 +4,7 @@ use crate::exec::ExecErrorInfo;
 use crate::FetchInfo;
 
 use serde::Serialize;
+use serde_json::json;
 
 use crate::log;
 

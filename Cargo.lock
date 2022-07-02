@@ -2501,7 +2501,6 @@ dependencies = [
  "regex",
  "rust-crypto",
  "serde",
- "serde_derive",
  "serde_json",
  "tempdir",
  "tempfile",
