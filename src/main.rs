@@ -511,7 +511,7 @@ fn main() {
 }
 
 fn db_connect(creds_file: PathBuf) -> Pool {
-    Pool::new(fs::read_to_string(&creds_file).unwrap()).unwrap()
+    Pool::new(mysql::Opts::from_url(&fs::read_to_string(&creds_file).unwrap()).unwrap()).unwrap()
 }
 
 #[actix_rt::main]
