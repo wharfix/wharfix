@@ -4,7 +4,6 @@ extern crate clap;
 #[macro_use] extern crate serde_json;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate mysql;
-extern crate time;
 extern crate tokio;
 extern crate uuid;
 extern crate linereader;
