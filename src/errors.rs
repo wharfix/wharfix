@@ -43,8 +43,10 @@ pub enum DockerErrorCode {
     BlobUnknown,
     #[serde(rename = "MANIFEST_UNKNOWN")]
     ManifestUnknown,
+    #[cfg(feature = "mysql")]
     #[serde(rename = "NAME_UNKNOWN")]
     NameUnknown,
+    #[cfg(feature = "mysql")]
     #[serde(rename = "NAME_INVALID")]
     NameInvalid,
     #[serde(rename = "SNAFU")]
@@ -124,6 +126,7 @@ impl<T> DockerErrorContext for T where T: DockerErrorDetails {
 }
 
 impl DockerError {
+    #[cfg(feature = "mysql")]
     pub fn repository_unknown() -> Self {
         let message = "repository name not known to registry".to_string();
         DockerError {
@@ -154,6 +157,7 @@ impl DockerError {
             details: text.to_string()
         }
     }
+    #[cfg(feature = "mysql")]
     pub fn repository_name_malformed() -> Self {
         let message = "repository name malformed".to_string();
         DockerError {

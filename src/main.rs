@@ -34,7 +34,6 @@ use git2::build::CheckoutBuilder;
 use futures::future::{ok, err, Ready};
 
 use regex::Regex;
-use mysql::Pool;
 
 use tempfile::NamedTempFile;
 use std::ffi::OsStr;
@@ -44,8 +43,9 @@ use dbc_rust_modules::{exec, log};
 use serde::Deserialize;
 use lazy_static::lazy_static;
 use serde_json::json;
-use mysql::params;
-use mysql::prelude::Queryable;
+
+#[cfg(feature = "mysql")]
+use mysql::{params, Pool, prelude::Queryable};
 
 mod errors;
 
@@ -82,6 +82,7 @@ struct BlobInfo {
 }
 
 enum ServeType {
+    #[cfg(feature = "mysql")]
     Database(Pool),
     Repo(String),
     Path(PathBuf),
@@ -350,6 +351,7 @@ impl ServeType {
         };
 
         Ok(match serve_type {
+              #[cfg(feature = "mysql")]
               ServeType::Database(pool) => {
                     lazy_static! {
                         static ref RE: Regex = Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?").unwrap();
@@ -398,11 +400,6 @@ fn main() {
         .help("URL to git repository")
         .takes_value(true)
         .required_unless_one(&["path", "dbconnfile", "derivationoutput"]))
-    .arg(clap::Arg::with_name("dbconnfile")
-        .long("dbconnfile")
-        .help("Path to file from which to read db connection details")
-        .takes_value(true)
-        .required_unless_one(&["path", "repo", "derivationoutput"]))
     .arg(clap::Arg::with_name("derivationoutput")
         .long("derivation-output")
         .help("Output which servable derivations need to produce to be valid")
@@ -456,6 +453,13 @@ fn main() {
         .default_value("8088")
         .required(true));
 
+    #[cfg(feature = "mysql")]
+    let args = args.arg(clap::Arg::with_name("dbconnfile")
+        .long("dbconnfile")
+        .help("Path to file from which to read db connection details")
+        .takes_value(true)
+        .required_unless_one(&["path", "repo", "derivationoutput"]));
+
     if let Err(e) = || -> Result<(), MainError> {
 
         let m = args.get_matches();
@@ -476,6 +480,7 @@ fn main() {
            m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
            m if m.is_present("repo") => ServeType::Repo(m.value_of("repo").unwrap().to_string()),
+           #[cfg(feature = "mysql")]
            m if m.is_present("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.value_of("dbconnfile").unwrap()).unwrap())),
            m if m.is_present("derivationoutput") => ServeType::Derivation(m.value_of("derivationoutput").unwrap().to_string()),
            _ => panic!("clap should ensure this never happens")
@@ -510,6 +515,7 @@ fn main() {
     }
 }
 
+#[cfg(feature = "mysql")]
 fn db_connect(creds_file: PathBuf) -> Pool {
     Pool::new(mysql::Opts::from_url(&fs::read_to_string(&creds_file).unwrap()).unwrap()).unwrap()
 }

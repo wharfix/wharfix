@@ -21,6 +21,9 @@ git2 = "0.14"
 tempdir = "0"
 tempfile = "3"
 regex = "1"
-mysql = "22"
+mysql = { version = "22", optional = true }
 rust-crypto = "0"
 dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main" }
+
+[features]
+mysql = ["dep:mysql"]

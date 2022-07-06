@@ -6677,6 +6677,7 @@ rec {
           {
             name = "mysql";
             packageId = "mysql";
+            optional = true;
           }
           {
             name = "regex";
@@ -6718,7 +6719,10 @@ rec {
             packageId = "walkdir";
           }
         ];
-
+        features = {
+          "mysql" = [ "dep:mysql" ];
+        };
+        resolvedDefaultFeatures = [ "mysql" ];
       };
       "winapi" = rec {
         crateName = "winapi";
