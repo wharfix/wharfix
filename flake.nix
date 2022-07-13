@@ -16,28 +16,25 @@
       overlays = [ self.overlay cargo2nix.overlays.default ];
     };
     lib = nixpkgs.lib;
-    cratePackage = _features: 
-    let
-      features = lib.naturalSort _features;
-      name = if features == ["default"] then pname else "${pname}-${lib.concatStringsSep "-" features}";
-    in
-    {
-      "${name}" = (pkgs.rustBuilder.makePackageSet {
-        rustVersion = pkgs.rustc.version;
-        packageFun = import ./Cargo.nix;
-        rootFeatures = map (f: "${pname}/${f}") features;
-      }).workspace.${pname} {};
-    };
-    outputFeatureSets = [
-      ["default"]
-      ["mysql"]
-    ];
-    outputPackages = lib.foldr (a: b: a // b) {} (map cratePackage outputFeatureSets);
-  in {
-    packages.${system} = outputPackages;
-    defaultPackage.${system} = outputPackages.wharfix;
 
-    overlay = final: prev: outputPackages;
+    outputPackages = {
+      "${pname}" = ["default"];
+      "${pname}-mysql" = ["mysql"];
+    };
+  in {
+    packages.${system} = lib.mapAttrs (n: _: pkgs.${n}) outputPackages;
+    defaultPackage.${system} = pkgs.${pname};
+
+    overlay = final: prev:
+    let
+      cratePackage = name: features:
+        (final.rustBuilder.makePackageSet {
+          rustVersion = final.rustc.version;
+          packageFun = import ./Cargo.nix;
+          rootFeatures = map (f: "${pname}/${f}") features;
+        }).workspace.${pname} {};
+    in
+      lib.mapAttrs cratePackage outputPackages;
 
     devShell.${system} = with pkgs; mkShell {
       buildInputs = [
