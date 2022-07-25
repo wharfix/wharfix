@@ -2,31 +2,44 @@
   description = "wharfix";
 
   inputs = {
+    cargo2nix.url = "github:cargo2nix/cargo2nix";
+    cargo2nix.inputs.nixpkgs.follows = "nixpkgs";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-22.05";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, cargo2nix, nixpkgs }:
   let
     pname = "wharfix";
     system = "x86_64-linux";
     pkgs = import nixpkgs {
       inherit system;
-      overlays = [ self.overlay ];
+      overlays = [ self.overlay cargo2nix.overlays.default ];
+    };
+    lib = nixpkgs.lib;
+
+    outputPackages = {
+      "${pname}" = ["default"];
+      "${pname}-mysql" = ["mysql"];
     };
   in {
-    packages.${system}.${pname} = pkgs.${pname};
+    packages.${system} = lib.mapAttrs (n: _: pkgs.${n}) outputPackages;
     defaultPackage.${system} = pkgs.${pname};
 
-    overlay = final: prev: {
-      "${pname}" = (import ./Cargo.nix {
-        pkgs = final;
-      }).rootCrate.build;
-    };
+    overlay = final: prev:
+    let
+      cratePackage = name: features:
+        (final.rustBuilder.makePackageSet {
+          rustVersion = final.rustc.version;
+          packageFun = import ./Cargo.nix;
+          rootFeatures = map (f: "${pname}/${f}") features;
+        }).workspace.${pname} {};
+    in
+      lib.mapAttrs cratePackage outputPackages;
 
     devShell.${system} = with pkgs; mkShell {
       buildInputs = [
         cargo
-        crate2nix
+        cargo2nix.packages.${system}.cargo2nix
         nix
         openssl.dev
         pkgconfig
