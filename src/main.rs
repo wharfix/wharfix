@@ -250,6 +250,16 @@ fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), exec::Exec
     cmd.spawn_ok()?.wait()
 }
 
+fn get_bucket_prefix(name: &str) -> &str {
+    let parts: Vec<&str> = name.split(':').collect();
+    let subject = if parts.len() > 1 {
+        parts[1]
+    } else {
+        parts[0]
+    };
+    subject.get(0..2).unwrap()
+}
+
 impl BlobDelivery {
     fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
         use std::os::unix::fs;
@@ -258,7 +268,10 @@ impl BlobDelivery {
         match self {
             BlobDelivery::Memory => { BLOBS.write().unwrap().insert(info.name.clone(), info); },
             BlobDelivery::Persistent(dir) => {
-                let cache_path = dir.join(&info.name);
+                let bucket_prefix = get_bucket_prefix(&info.name);
+                let bucket_dir = dir.join(&bucket_prefix);
+                std::fs::create_dir_all(&bucket_dir).unwrap();
+                let cache_path = bucket_dir.join(&info.name);
                 match fs::symlink(&info.path, &cache_path) {
                     Ok(_) => {}
                     Err(e) => {
@@ -299,8 +312,16 @@ impl BlobDelivery {
                 }
             },
             Self::Persistent(path) => {
-                let full_path = path.join(&info.reference);
-                let canonical_path = fs::canonicalize(&full_path).map_err(|e| e.blob_context(&info))?;
+                let bucket_prefix = get_bucket_prefix(&info.reference);
+                let bucket_dir = path.join(&bucket_prefix);
+
+                let bucket_full_path = path.join(&bucket_dir).join(&info.reference);
+                let legacy_full_path = path.join(&info.reference);
+
+                let canonical_path = match fs::canonicalize(&bucket_full_path) {
+                    Ok(p) => Ok(p),
+                    Err(_) => fs::canonicalize(&legacy_full_path), // fallback to non-bucketed path
+                }.map_err(|e| e.blob_context(&info))?;
 
                 Ok(BlobInfo {
                     name: info.reference.to_string(),
