@@ -1,6 +1,5 @@
 
 use std::boxed::Box;
-use crate::exec::ExecErrorInfo;
 use crate::FetchInfo;
 
 use serde::Serialize;
@@ -9,6 +8,8 @@ use actix_web::HttpResponse;
 use actix_web::body::BoxBody;
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
+
+use async_process::ExitStatus;
 
 use crate::log;
 
@@ -27,7 +28,7 @@ pub enum MainError {
 
 #[derive(Debug)]
 pub enum RepoError {
-    Exec(ExecErrorInfo),
+    Exec(ExitStatus),
     Git(git2::Error),
     IndexFile(std::io::Error),
     ImageNotFound,
@@ -189,13 +190,6 @@ impl ResponseError for DockerError {
     }
 }
 
-impl std::convert::From<ExecErrorInfo> for RepoError {
-    fn from(err: ExecErrorInfo) -> Self {
-        RepoError::Exec(err)
-    }
-}
-
-
 impl std::convert::From<RepoError> for actix_web::error::Error {
     fn from(_err: RepoError) -> Self {
         actix_web::error::ErrorInternalServerError("repo error")
@@ -205,5 +199,11 @@ impl std::convert::From<RepoError> for actix_web::error::Error {
 impl std::convert::From<git2::Error> for RepoError {
     fn from(err: git2::Error) -> Self {
         RepoError::Git(err)
+    }
+}
+
+impl std::convert::From<std::io::Error> for RepoError {
+    fn from(err: std::io::Error) -> Self {
+        RepoError::IO(Box::new(err))
     }
 }

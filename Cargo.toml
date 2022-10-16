@@ -23,7 +23,8 @@ tempfile = "3"
 regex = "1"
 mysql = { version = "22", optional = true }
 rust-crypto = "0"
-dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main" }
+dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main", features = ["log"], default-features = false }
+async-process = "1"
 
 [features]
 mysql = ["dep:mysql"]

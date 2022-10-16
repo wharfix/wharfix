@@ -23,9 +23,8 @@ use git2::Cred;
 use git2::RemoteCallbacks;
 
 
-use std::process::{Command, Output};
-use crate::exec::SpawnOk;
-use crate::exec::Wait;
+use async_process::{Command, Output};
+use async_process::Stdio;
 use linereader::LineReader;
 
 use std::sync::RwLock;
@@ -38,7 +37,7 @@ use regex::Regex;
 use tempfile::NamedTempFile;
 use std::ffi::OsStr;
 
-use dbc_rust_modules::{exec, log};
+use dbc_rust_modules::log;
 
 use serde::Deserialize;
 use lazy_static::lazy_static;
@@ -108,11 +107,11 @@ struct Registry {
 }
 
 impl Registry {
-    fn prepare(&self, temp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
-        self.manifest_delivery.prepare(temp_dir, info)
+    async fn prepare(&self, temp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
+        self.manifest_delivery.prepare(temp_dir, info).await
     }
-    fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
-        self.manifest_delivery.index(serve_root, info)
+    async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
+        self.manifest_delivery.index(serve_root, info).await
     }
     async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
         self.manifest_delivery.manifest(serve_root, info).await
@@ -120,16 +119,16 @@ impl Registry {
     async fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
         self.blob_delivery.blob(info)
     }
-    fn blob_discovery(&self, path: &Path) {
-        self.blob_delivery.discover(path);
+    async fn blob_discovery(&self, path: &Path) {
+        self.blob_delivery.discover(path).await;
     }
-    fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
-        self.blob_delivery.store_blob(info, is_gc_rootable);
+    async fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
+        self.blob_delivery.store_blob(info, is_gc_rootable).await;
     }
 }
 
 impl ManifestDelivery {
-    fn prepare(&self, tmp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
+    async fn prepare(&self, tmp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
         match self {
             Self::Repo(r) => {
                 let refs: &[&str] = &[];
@@ -147,7 +146,7 @@ impl ManifestDelivery {
                 let derivation_file = PathBuf::from(format!("/nix/store/{}.drv", &info.reference));
                 if ! RE.is_match(&info.reference) {
                     Err(RepoError::ImageNotFound)
-                } else if ! derivation_file.exists() || ! nix_derivation_info(&derivation_file).has_output(&output) {
+                } else if ! derivation_file.exists() || ! nix_derivation_info(&derivation_file).await.has_output(&output) {
                     Err(RepoError::ImageNotFound)
                 } else {
                     Ok(derivation_file)
@@ -155,7 +154,7 @@ impl ManifestDelivery {
             }
         }
     }
-    fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
+    async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
@@ -165,13 +164,14 @@ impl ManifestDelivery {
                 }
             
                 let mut cmd = Command::new("nix-instantiate");
-                let mut child = cmd
+                let child = cmd
                     .arg("--eval")
                     .arg("-E")
                     .arg(format!("builtins.hasAttr \"{}\" (import {} {})", &info.name, &fq.to_str().unwrap(), "{}"))
-                    .spawn_ok().unwrap();
+                    .stdout(Stdio::piped())
+                    .spawn().unwrap();
             
-                let out: Output = child.wait_for_output().unwrap();
+                let out: Output = child.output().await.unwrap();
                 let mut line_bytes = vec!();
                 let mut reader = LineReader::new(&out.stdout[..]);
                 while let Some(line) = reader.next_line() {
@@ -200,7 +200,7 @@ impl ManifestDelivery {
         }
 
         let mut drv_file = NamedTempFile::new().unwrap();
-        let mut child = match self {
+        let child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 if unsafe { INDEX_FILE_IS_BUILDABLE } {
@@ -225,11 +225,13 @@ impl ManifestDelivery {
                 .arg("-A")
                 .arg(&output)
             },
-        }.spawn_ok().unwrap();
+        }
+        .stdout(Stdio::piped())
+        .spawn().unwrap();
     
-        let out: Output = child.wait_for_output().unwrap();
+        let out: Output = child.output().await.unwrap();
         let mut line_bytes = vec!();
-        let mut reader = LineReader::new(&out.stdout[..]);
+        let mut reader = LineReader::new(out.stdout.as_slice());
         while let Some(line) = reader.next_line() {
             line_bytes = line.expect("read error").to_vec();
         }
@@ -239,7 +241,7 @@ impl ManifestDelivery {
     }
 }
 
-fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), exec::ExecErrorInfo> {
+async fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), RepoError> {
     let mut cmd = Command::new("nix-store");
     cmd.arg("--add-root")
     .arg(gc_root_path)
@@ -247,7 +249,12 @@ fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), exec::Exec
     .arg("-r")
     .arg(store_path);
 
-    cmd.spawn_ok()?.wait()
+    let exit_status = cmd.spawn()?.status().await?;
+    if exit_status.success() {
+        Ok(())
+    } else {
+        Err(errors::RepoError::Exec(exit_status))
+    }
 }
 
 fn get_bucket_prefix(name: &str) -> &str {
@@ -261,7 +268,7 @@ fn get_bucket_prefix(name: &str) -> &str {
 }
 
 impl BlobDelivery {
-    fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
+    async fn store_blob(&self, info: BlobInfo, is_gc_rootable: bool) {
         use std::os::unix::fs;
         use std::io::ErrorKind;
 
@@ -281,7 +288,7 @@ impl BlobDelivery {
                     }
                 }
                 if is_gc_rootable && unsafe { ADD_NIX_GCROOTS } {
-                    nix_add_root(&cache_path, &info.path).or_else(|e| {
+                    nix_add_root(&cache_path, &info.path).await.or_else(|e| {
                         log::error(&format!("error caching: {}", &info.name), &e);
                         Err(e)
                     }).unwrap();
@@ -290,7 +297,7 @@ impl BlobDelivery {
         }
     }
 
-    fn discover(&self, path: &Path) {
+    async fn discover(&self, path: &Path) {
         // traverse blob path to discover new blobs
         for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path) {
             let file_name = PathBuf::from(entry.file_name());
@@ -300,7 +307,7 @@ impl BlobDelivery {
                 name,
                 content_type: file_name_to_content_type(&file_name).to_string(),
                 path: entry.path().to_path_buf()
-            }, false);
+            }, false).await;
         }
     }
     fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
@@ -350,11 +357,13 @@ impl Derivation {
     }
 }
 
-fn nix_derivation_info(derivation_file: &Path) -> Derivation {
+async fn nix_derivation_info(derivation_file: &Path) -> Derivation {
     let mut cmd = Command::new("nix");
     cmd.arg("show-derivation").arg(derivation_file);
-    let mut child = cmd.spawn_ok().unwrap();
-    let out: Derivation = child.output_json().unwrap();
+    cmd.stdout(Stdio::piped());
+    let child = cmd.spawn().unwrap();
+    let bytes = child.output().await.unwrap().stdout;
+    let out: Derivation = serde_json::from_slice(&bytes).unwrap();
     out
 }
 
@@ -639,8 +648,8 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
         Err(_) => {
             //no dice, try evaling+building
             let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
-            let serve_root = registry.prepare(tmp_dir.path(), &info).map_err(|e| e.manifest_context(&info))?;
-            registry.index(&serve_root, &info).map_err(|e| e.manifest_context(&info))?;
+            let serve_root = registry.prepare(tmp_dir.path(), &info).await.map_err(|e| e.manifest_context(&info))?;
+            registry.index(&serve_root, &info).await.map_err(|e| e.manifest_context(&info))?;
             registry.manifest(&serve_root, &info).await
         }
     };
@@ -657,14 +666,17 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
             log::info(&format!("serving manifest from path: {:?}", &fq));
             match fs::read_to_string(&fq) {
                 Ok(manifest_str) => {
-                    registry.blob_discovery(&path.join("blobs"));
-                    path.file_name().map(|path_base_name| {
-                        registry.store_blob(BlobInfo{
-                            name: path_base_name.to_str().unwrap().to_owned(),
-                            content_type: CONTENT_TYPE_MANIFEST.to_owned(),
-                            path: path.clone()
-                        }, true);
-                    });
+                    registry.blob_discovery(&path.join("blobs")).await;
+                    match path.file_name() {
+                        Some(path_base_name) => {
+                            registry.store_blob(BlobInfo{
+                                name: path_base_name.to_str().unwrap().to_owned(),
+                                content_type: CONTENT_TYPE_MANIFEST.to_owned(),
+                                path: path.clone()
+                            }, true).await;
+                        },
+                        None => {}
+                    }
                     Ok(WharfixManifest::new(manifest_str, fq))
                 },
                 Err(e) => {
