@@ -99,10 +99,12 @@ impl DockerErrorDetails for RepoError {
     }
     fn docker_message(&self, info: &FetchInfo) -> String {
         match self {
-            RepoError::Git(e) => if e.code() == git2::ErrorCode::NotFound {
-                format!("git ref: {} not found", &info.reference)
-            } else {
-                "unknown git error".to_string()
+            RepoError::Git(e) => match e.code() {
+                git2::ErrorCode::NotFound => format!("git ref: {} not found", &info.reference),
+                code => {
+                    let msg = e.message();
+                    format!("git2 error: {code:?}. Message: {msg}")
+                }
             }
             RepoError::IndexFile(_) => "failed to read repository index file: /default.nix".to_string(),
             RepoError::IndexAttributeNotFound => format!("attribute: {} not found in repository index: /default.nix", &info.name),
