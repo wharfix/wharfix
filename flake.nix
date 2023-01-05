@@ -50,13 +50,33 @@
           ];
           buildInputs = with final; [
             openssl
+            (libssh2.overrideAttrs (oa: {
+              # OK, hear me out... I know this is super heavy-handed, and it
+              # will hurt if someone tries to actually do signalling while
+              # libgit2 (the user of libssh2) is blocked on this poll, but it
+              # also has a timeout, so we'll probably survive a bit of delay.
+              # The entire shenanigans are precipitated (I think...) by
+              # async-process using SIGCHLD to deal with reaping etc. of
+              # children, causing EINTR to crop up all the way down here. I
+              # will work on a minimal reproducer and figure out a better
+              # solution with upstream.
+              postPatch = ''
+                sed -i 's/rc < 0/rc < 0 \&\& errno != EINTR/' src/session.c
+              '';
+            }))
           ];
+          # system dep controlled via both this env var AND a pkgconfig result.
+          # Silently ignores the other if either one isn't there and uses a
+          # vendored version. Stahp.
+          # https://github.com/alexcrichton/ssh2-rs/issues/173
+          LIBSSH2_SYS_USE_PKG_CONFIG = true;
           cargoExtraArgs = final.lib.concatMapStringsSep " " (f: "--features=${f}") features;
         });
     in
       lib.mapAttrs cratePackage outputPackages;
 
     devShell.${system} = with pkgs; mkShell {
+      LIBSSH2_SYS_USE_PKG_CONFIG = true;
       inputsFrom = [ self.defaultPackage.${system} ];
       nativeBuildInputs = [
         cargo
