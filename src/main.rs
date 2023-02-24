@@ -556,6 +556,8 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
 
     let manifest_url = "/v2/{name}/manifests/{reference}";
     let blob_url = "/v2/{name}/blobs/{reference}";
+    let fake_multitenant_manifest_url = "/v2/{repo}/{name}/manifests/{reference}";
+    let fake_multitenant_blob_url = "/v2/{repo}/{name}/blobs/{reference}";
 
     HttpServer::new(move || {
         App::new()
@@ -569,8 +571,12 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
             .route("/v2", web::get().to(version))
             .route(manifest_url, web::head().to(manifest))
             .route(manifest_url, web::get().to(manifest))
+            .route(fake_multitenant_manifest_url, web::head().to(|_: String, name, reference| manifest(name, reference)))
+            .route(fake_multitenant_manifest_url, web::get().to(|_: String, name, reference| manifest(name, reference)))
             .route(blob_url, web::head().to(blob))
             .route(blob_url, web::get().to(blob))
+            .route(fake_multitenant_blob_url, web::head().to(|_: String, name, reference| blob(name, reference)))
+            .route(fake_multitenant_blob_url, web::get().to(|_: String, name, reference| blob(name, reference)))
     })
         .bind(format!("{listen_address}:{listen_port}", listen_address=listen_address, listen_port=listen_port))?
         .run()
