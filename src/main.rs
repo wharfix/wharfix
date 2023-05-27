@@ -89,6 +89,7 @@ enum ServeType {
 }
 
 enum ManifestDelivery {
+    DockerFileRepo(Repository),
     Repo(Repository),
     Path(PathBuf),
     Derivation(String),
@@ -130,7 +131,7 @@ impl Registry {
 impl ManifestDelivery {
     async fn prepare(&self, tmp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
         match self {
-            Self::Repo(r) => {
+            Self::DockerFileRepo | Self::Repo(r) => {
                 let refs: &[&str] = &[];
                 let mut fo = fetch_options();
                 fo.prune(FetchPrune::On);
@@ -156,7 +157,7 @@ impl ManifestDelivery {
     }
     async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         match self {
-            ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
+            ManifestDelivery::DockerFileRepo(_) | ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 log::data("looking for indexfile at", &fq);
                 {
