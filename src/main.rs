@@ -39,11 +39,13 @@ use std::ffi::OsStr;
 
 use dbc_rust_modules::log;
 
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use lazy_static::lazy_static;
 use serde_json::json;
 
 use std::io::Write;
+use crypto::sha2::Sha256;
+use crypto::digest::Digest;
 
 #[cfg(feature = "mysql")]
 use mysql::{params, Pool, prelude::Queryable};
@@ -53,6 +55,7 @@ mod errors;
 static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
+static mut BUILDAH_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
@@ -85,6 +88,7 @@ struct BlobInfo {
 enum ServeType {
     #[cfg(feature = "mysql")]
     Database(Pool),
+    DockerFileRepo(String),
     Repo(String),
     Path(PathBuf),
     Derivation(String),
@@ -127,15 +131,67 @@ pub struct BuildahRootFS {
     pub diff_ids: Vec<String>,
 }
 
+#[derive(Clone, Deserialize)]
+pub struct DockerSpec {
+    context: PathBuf,
+    dockerfile: Option<PathBuf>
+}
+
+#[derive(Clone, Deserialize)]
+pub enum IndexLookup {
+    DockerSpec(DockerSpec),
+    Deferred,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Manifest {
+    #[serde(rename="schemaVersion")]
+    schema_version: u8,
+    #[serde(rename="mediaType")]
+    media_type: String,
+    config: ManifestAsset,
+    layers: Vec<ManifestAsset>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct ManifestAsset {
+    #[serde(rename="mediaType")]
+    media_type: String,
+    digest: String,
+    size: u64,
+}
+
+/*
+      "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "config": {
+    "mediaType": "application/vnd.oci.image.config.v1+json",
+    "digest": "sha256:a887977fb00b8d5a92d2e9d6e63364e46ca436d67647c3689766514d14a9dfb0",
+    "size": 860
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.oci.image.layer.v1.tar",
+      "digest": "sha256:974e52a24adf98b37b8895f61b8d8d273b73a8596b80da491342936fa1751541",
+      "size": 129344512
+    },
+    {
+      "mediaType": "application/vnd.oci.image.layer.v1.tar",
+      "digest": "sha256:c34935869b7249cbed1e1f0218cdd5cd8a40acb32c43f9adc851dc5f0f467e37",
+      "size": 56694784
+    }
+  ],
+*/
+
 impl Registry {
     async fn prepare(&self, temp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
         self.manifest_delivery.prepare(temp_dir, info).await
     }
-    async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
+    async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<IndexLookup, RepoError> {
         self.manifest_delivery.index(serve_root, info).await
     }
-    async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
-        self.manifest_delivery.manifest(serve_root, info).await
+    async fn manifest(&self, lookup: &IndexLookup, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        self.manifest_delivery.manifest(&self.blob_delivery, lookup, serve_root, info).await
     }
     async fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
         self.blob_delivery.blob(info)
@@ -175,15 +231,35 @@ impl ManifestDelivery {
             }
         }
     }
-    async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
+    async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<IndexLookup, RepoError> {
         match self {
+            ManifestDelivery::DockerFileRepo(_) => {
+                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
+                log::data("looking for indexfile at", &fq);
+                {
+                    std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
+                }
+
+                let child = Command::new("nix-instantiate")
+                    .arg("--json")
+                    .arg("--eval")
+                    .arg("-E")
+                    .arg(format!("(import {}).\"{}\"", &fq.to_str().unwrap(), &info.name))
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+
+                let out: Output = child.output().await.unwrap();
+                let spec: DockerSpec = serde_json::from_slice(out.stdout.as_slice()).unwrap();
+                Ok(IndexLookup::DockerSpec(spec))
+            },
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 log::data("looking for indexfile at", &fq);
                 {
                     std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
                 }
-            
+
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
                     .arg("--eval")
@@ -202,43 +278,50 @@ impl ManifestDelivery {
                 if String::from_utf8(line_bytes).unwrap().trim() == "false" {
                     Err(RepoError::IndexAttributeNotFound)?
                 };
-                Ok(())
+                Ok(IndexLookup::Deferred)
             },
-            ManifestDelivery::DockerFileRepo(_) => Ok(()), //TODO: make index files possible
-            ManifestDelivery::Derivation(_) => Ok(())
+            ManifestDelivery::Derivation(_) => Ok(IndexLookup::Deferred)
         }
     }
 
-    async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
-        match self {
-            Self::DockerFileRepo(_) => {
-                match self.buildah_eval_manifest(serve_root, info).await {
+    async fn manifest(&self, blob_delivery: &BlobDelivery, lookup: &IndexLookup, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        match lookup {
+            IndexLookup::DockerSpec(spec) => {
+                let context = serve_root.join(&spec.context);
+                let dockerfile = match &spec.dockerfile {
+                    Some(f) => context.join(f),
+                    None => context.join("Dockerfile"),
+                };
+
+                match self.buildah_get_manifest(blob_delivery, info).await {
                     Ok(p) => Ok(p),
                     Err(_) => {
                         // assuming image not found in buildah cache
-                        self.buildah_build(serve_root, info).await
+                        self.buildah_build(&context, &dockerfile, info).await.unwrap();
+                        self.buildah_get_manifest(blob_delivery, info).await
                     }
                 }
             },
-            _ => self.nix_eval_manifest(serve_root, info).await
+            _ => self.nix_build_manifest(serve_root, info).await
         }
     }
 
-    async fn buildah_build(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+    async fn buildah_build(&self, context: &Path, dockerfile: &Path, info: &FetchInfo) -> Result<(), DockerError> {
         let mut child = Command::new("buildah")
             .arg("build")
+            .arg("-f")
+            .arg(dockerfile)
             .arg("-t")
             .arg(&format!("{name}:{reference}", name=&info.name, reference=&info.reference))
-            .arg(serve_root.to_str().unwrap())
+            .arg(context.to_str().unwrap())
             .spawn()
             .unwrap();
 
         child.status().await.unwrap();
-
-        self.buildah_eval_manifest(serve_root, info).await
+        Ok(())
     }
 
-    async fn buildah_eval_manifest(&self, _: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+    async fn buildah_get_manifest(&self, blob_delivery: &BlobDelivery, info: &FetchInfo) -> Result<PathBuf, DockerError> {
         //are we in cache ?
         let child = Command::new("buildah")
             .arg("inspect")
@@ -249,12 +332,43 @@ impl ManifestDelivery {
 
         let out: Output = child.output().await.unwrap();
         let inspect: BuildahInspect = serde_json::from_slice(out.stdout.as_slice()).map_err(|_| DockerError::blob_unknown(&info.reference))?;
-        let mut manifest_file = NamedTempFile::new().unwrap();
-        manifest_file.write_all(inspect.manifest.as_bytes()).unwrap();
-        Ok(manifest_file.path().into())
+        let mut manifest: Manifest = serde_json::from_str(&inspect.manifest).unwrap();
+        manifest.media_type = CONTENT_TYPE_MANIFEST.to_owned();
+        manifest.config.media_type = CONTENT_TYPE_CONTAINER_CONFIG.to_owned();
+
+        let parts: Vec<&str> = manifest.config.digest.split(':').collect();
+        let raw_digest = parts[1];
+        blob_delivery.store_blob(BlobInfo{
+            name: manifest.config.digest.clone(),
+            content_type: manifest.config.media_type.clone(),
+            path: PathBuf::from(format!("/home/joho.local/share/containers/storage/vfs-layers/{}.tar-split.gz", &raw_digest)),
+        }, false).await;
+
+        for mut l in &mut manifest.layers {
+            l.media_type = CONTENT_TYPE_DIFFTAR.to_string();
+            let parts: Vec<&str> = l.digest.split(':').collect();
+            let raw_digest = parts[1];
+            blob_delivery.store_blob(BlobInfo{
+                name: l.digest.clone(),
+                content_type: l.media_type.clone(),
+                path: PathBuf::from(format!("/home/joho/.local/share/containers/storage/vfs-layers/{}.tar-split.gz", &raw_digest)),
+            }, false).await;
+        }
+
+        let manifest_body = json!(manifest).to_string();
+        let digest = {
+            let mut hasher = Sha256::new();
+            hasher.input_str(&manifest_body);
+            format!("sha256:{digest}", digest=hasher.result_str())
+        };
+
+        let cache_dir = unsafe { BUILDAH_CACHE_DIR.as_ref().to_owned() };
+        let manifest_file = cache_dir.unwrap().join(digest);
+        std::fs::write(&manifest_file, manifest_body.as_bytes()).unwrap();
+        Ok(manifest_file)
     }
 
-    async fn nix_eval_manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+    async fn nix_build_manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
         unsafe {
@@ -461,6 +575,7 @@ impl ServeType {
                     let repo_url = res.ok_or(DockerError::repository_unknown())?;
                     Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Repo(repo_open(name, &repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) }
               },
+              ServeType::DockerFileRepo(repo_url) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::DockerFileRepo(repo_open(name, repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) },
               ServeType::Repo(repo_url) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Repo(repo_open(name, repo_url).or_else(|e| Err(DockerError::unknown("failed to open repository", e)))?) },
               ServeType::Path(path) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Path(path.clone()) },
               ServeType::Derivation(output) => Registry { name: name.to_string(), blob_delivery, manifest_delivery: ManifestDelivery::Derivation(output.to_owned()) }
@@ -524,6 +639,11 @@ fn main() {
         .default_value("default.nix")
         .takes_value(true)
         .required(false))
+    .arg(clap::Arg::with_name("withdockerfiles")
+        .long("with-dockerfiles")
+        .help("Whether the repository contains dockerfiles that must be build diffently than nix images, must be given path to cache dir")
+        .takes_value(true)
+        .required(false))
     .arg(clap::Arg::with_name("indexfileisbuildable")
         .long("index-file-is-buildable")
         .help("Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper)")
@@ -577,6 +697,7 @@ fn main() {
         let serve_type = Some(match &m {
            m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
+           m if m.is_present("repo") && m.is_present("withdockerfiles") => ServeType::DockerFileRepo(m.value_of("repo").unwrap().to_string()),
            m if m.is_present("repo") => ServeType::Repo(m.value_of("repo").unwrap().to_string()),
            #[cfg(feature = "mysql")]
            m if m.is_present("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.value_of("dbconnfile").unwrap()).unwrap())),
@@ -592,12 +713,21 @@ fn main() {
             }
         };
 
+        let buildah_cache_dir = {
+            if m.is_present("withdockerfiles") {
+                Some(fs::canonicalize(m.value_of("withdockerfiles").unwrap()).unwrap())
+            } else {
+                None
+            }
+        };
+
         let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
             BLOB_CACHE_DIR = blob_cache_dir;
+            BUILDAH_CACHE_DIR = buildah_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
@@ -710,8 +840,8 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
             //no dice, try evaling+building
             let tmp_dir = TempDir::new("wharfix").or_else(|e| Err(RepoError::IO(Box::new(e)))).unwrap();
             let serve_root = registry.prepare(tmp_dir.path(), &info).await.map_err(|e| e.manifest_context(&info))?;
-            registry.index(&serve_root, &info).await.map_err(|e| e.manifest_context(&info))?;
-            registry.manifest(&serve_root, &info).await
+            let lookup = registry.index(&serve_root, &info).await.map_err(|e| e.manifest_context(&info))?;
+            registry.manifest(&lookup, &serve_root, &info).await
         }
     };
 
