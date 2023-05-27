@@ -43,6 +43,8 @@ use serde::Deserialize;
 use lazy_static::lazy_static;
 use serde_json::json;
 
+use std::io::Write;
+
 #[cfg(feature = "mysql")]
 use mysql::{params, Pool, prelude::Queryable};
 
@@ -107,6 +109,24 @@ struct Registry {
     blob_delivery: BlobDelivery,
 }
 
+#[derive(Clone, Deserialize)]
+pub struct BuildahInspect {
+    #[serde(rename="Manifest")]
+    pub manifest: String,
+    #[serde(rename="OCIv1")]
+    pub oci_v1: BuildahOCI
+}
+
+#[derive(Clone, Deserialize)]
+pub struct BuildahOCI {
+    pub rootfs: BuildahRootFS,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct BuildahRootFS {
+    pub diff_ids: Vec<String>,
+}
+
 impl Registry {
     async fn prepare(&self, temp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
         self.manifest_delivery.prepare(temp_dir, info).await
@@ -131,7 +151,7 @@ impl Registry {
 impl ManifestDelivery {
     async fn prepare(&self, tmp_dir: &Path, info: &FetchInfo) -> Result<PathBuf, RepoError> {
         match self {
-            Self::DockerFileRepo | Self::Repo(r) => {
+            Self::DockerFileRepo(r) | Self::Repo(r) => {
                 let refs: &[&str] = &[];
                 let mut fo = fetch_options();
                 fo.prune(FetchPrune::On);
@@ -157,7 +177,7 @@ impl ManifestDelivery {
     }
     async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         match self {
-            ManifestDelivery::DockerFileRepo(_) | ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
+            ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 log::data("looking for indexfile at", &fq);
                 {
@@ -184,12 +204,57 @@ impl ManifestDelivery {
                 };
                 Ok(())
             },
+            ManifestDelivery::DockerFileRepo(_) => Ok(()), //TODO: make index files possible
             ManifestDelivery::Derivation(_) => Ok(())
         }
     }
-    async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
-        use std::io::Write;
 
+    async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        match self {
+            Self::DockerFileRepo(_) => {
+                match self.buildah_eval_manifest(serve_root, info).await {
+                    Ok(p) => Ok(p),
+                    Err(_) => {
+                        // assuming image not found in buildah cache
+                        self.buildah_build(serve_root, info).await
+                    }
+                }
+            },
+            _ => self.nix_eval_manifest(serve_root, info).await
+        }
+    }
+
+    async fn buildah_build(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        let mut child = Command::new("buildah")
+            .arg("build")
+            .arg("-t")
+            .arg(&format!("{name}:{reference}", name=&info.name, reference=&info.reference))
+            .arg(serve_root.to_str().unwrap())
+            .spawn()
+            .unwrap();
+
+        child.status().await.unwrap();
+
+        self.buildah_eval_manifest(serve_root, info).await
+    }
+
+    async fn buildah_eval_manifest(&self, _: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        //are we in cache ?
+        let child = Command::new("buildah")
+            .arg("inspect")
+            .arg(&format!("{name}:{reference}", name=&info.name, reference=&info.reference))
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let out: Output = child.output().await.unwrap();
+        let inspect: BuildahInspect = serde_json::from_slice(out.stdout.as_slice()).map_err(|_| DockerError::blob_unknown(&info.reference))?;
+        let mut manifest_file = NamedTempFile::new().unwrap();
+        manifest_file.write_all(inspect.manifest.as_bytes()).unwrap();
+        Ok(manifest_file.path().into())
+    }
+
+    async fn nix_eval_manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
         unsafe {
@@ -202,7 +267,7 @@ impl ManifestDelivery {
 
         let mut drv_file = NamedTempFile::new().unwrap();
         let child = match self {
-            Self::Repo(_) | ManifestDelivery::Path(_) => {
+            Self::DockerFileRepo(_) | Self::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 if unsafe { INDEX_FILE_IS_BUILDABLE } {
                     cmd
@@ -241,6 +306,8 @@ impl ManifestDelivery {
         Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
     }
 }
+
+
 
 async fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), RepoError> {
     let mut cmd = Command::new("nix-store");
