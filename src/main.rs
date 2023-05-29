@@ -592,14 +592,7 @@ struct WharfixManifest{
 
 impl WharfixManifest {
     fn new(body: String, path: PathBuf) -> Self {
-        use crypto::sha2::Sha256;
-        use crypto::digest::Digest;
-
-        let digest = {
-            let mut hasher = Sha256::new();
-            hasher.input_str(&body);
-            format!("sha256:{digest}", digest=hasher.result_str())
-        };
+        let digest = format!("sha256:{digest}", digest=sha256_digest_str(&body));
 
         //TODO: verify that above matches with drv embedded digest of manifest
 
@@ -756,12 +749,8 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
 }
 
 fn pathname_generator<'l>(name: &str, url: &str) -> String {
-    use crypto::sha2::Sha256;
-    use crypto::digest::Digest;
-
-    let mut hasher = Sha256::new();
-    hasher.input_str(format!("{}{}", name, url).as_str());
-    format!("{}-{}", hasher.result_str(), name)
+    let hash = sha256_digest_str(&format!("{}{}", name, url).as_str());
+    format!("{}-{}", hash, name)
 }
 
 fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Result<(), RepoError> {
@@ -797,4 +786,13 @@ fn fetch_options<'l>() -> FetchOptions<'l> {
         },
         None => fo
     }
+}
+
+fn sha256_digest_str(input: &str) -> String {
+    use sha2::{Sha256, Digest};
+
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    let hash = hasher.finalize();
+    format!("{:x}", hash)
 }
