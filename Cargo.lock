@@ -696,6 +696,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "crev-recursive-digest"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b41be9c980844ea4953318a59e9c66a342e7900f02dca60895215f7ecf38e047"
+dependencies = [
+ "digest",
+ "thiserror",
+ "walkdir",
+]
+
+[[package]]
 name = "crossbeam"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2863,6 +2874,7 @@ dependencies = [
  "actix-web",
  "async-process",
  "clap",
+ "crev-recursive-digest",
  "dbc-rust-modules",
  "erased-serde",
  "futures",

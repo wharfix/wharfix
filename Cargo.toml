@@ -25,6 +25,7 @@ mysql = { version = "24", optional = true }
 sha2 = "0"
 dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main", features = ["log"], default-features = false }
 async-process = "1"
+crev-recursive-digest = "0"
 
 [features]
 mysql = ["dep:mysql"]

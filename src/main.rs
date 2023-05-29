@@ -46,7 +46,7 @@ use serde_json::json;
 use std::io::Write;
 use std::io::Read;
 
-use uuid::Uuid;
+use crev_recursive_digest::RecursiveDigest;
 
 #[cfg(feature = "mysql")]
 use mysql::{params, Pool, prelude::Queryable};
@@ -309,6 +309,26 @@ impl ManifestDelivery {
     }
 
     async fn buildah_build_manifest(&self, blob_delivery: &BlobDelivery, context: &Path, dockerfile: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        use sha2::{Sha256, Digest};
+        use std::os::unix::fs;
+
+        let rd = RecursiveDigest::<Sha256, _, _>::new()
+            .build();
+        let context_digest = rd.get_digest_of(context).unwrap();
+        let dockerfile_digest = rd.get_digest_of(dockerfile).unwrap();
+
+        let mut hasher = Sha256::new();
+        hasher.update(context_digest);
+        hasher.update(dockerfile_digest);
+        let hash = hasher.finalize();
+        let hash_str = format!("{:x}", hash);
+
+        let buildah_cache_dir = unsafe { BUILDAH_CACHE_DIR.as_ref() }.unwrap();
+        let manifest_input_derive_hashfile = buildah_cache_dir.join(hash_str);
+        if manifest_input_derive_hashfile.exists() {
+            return Ok(manifest_input_derive_hashfile);
+        }
+
         let mut tar_file = NamedTempFile::new().unwrap();
 
         let mut child = Command::new("buildah")
@@ -325,10 +345,8 @@ impl ManifestDelivery {
 
         //TODO: consider input hashing the entire content and the dockerfile together,
         // to form a filename for the build image output
-        let random_out_dir = Uuid::new_v4();
-
-        let buildah_cache_dir = unsafe { BUILDAH_CACHE_DIR.as_ref() };
-        let tar_out_directory = buildah_cache_dir.unwrap().join(random_out_dir.to_string());
+        let random_out_dir = uuid::Uuid::new_v4();
+        let tar_out_directory = buildah_cache_dir.join(random_out_dir.to_string());
         std::fs::create_dir(&tar_out_directory).unwrap();
 
         let mut child = Command::new("tar")
@@ -372,6 +390,8 @@ impl ManifestDelivery {
         std::fs::rename(&config_file, format!("{}.{}", &config_file.to_str().unwrap(), "configjson")).unwrap();
         std::fs::remove_file(blob_dir.join(&manifest_digest)).unwrap();
         blob_delivery.discover_with_default_type(&blob_dir, CONTENT_TYPE_DIFFTAR).await;
+
+        fs::symlink(&new_manifest_file_path, &manifest_input_derive_hashfile).unwrap();
 
         Ok(new_manifest_file_path)
     }
