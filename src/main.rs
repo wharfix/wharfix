@@ -44,8 +44,9 @@ use lazy_static::lazy_static;
 use serde_json::json;
 
 use std::io::Write;
-use crypto::sha2::Sha256;
-use crypto::digest::Digest;
+use std::io::Read;
+
+use uuid::Uuid;
 
 #[cfg(feature = "mysql")]
 use mysql::{params, Pool, prelude::Queryable};
@@ -160,6 +161,15 @@ pub struct ManifestAsset {
     digest: String,
     size: u64,
 }
+
+#[derive(Clone, Deserialize)]
+pub struct OCIIndex {
+    manifests: Vec<ManifestAsset>,
+}
+
+/*
+{"schemaVersion":2,"manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:ffda7828b53075b187df0692998558cc548e428ec4e8880e1cc6f7a5618976c3","size":756}]}
+*/
 
 /*
       "schemaVersion": 2,
@@ -292,80 +302,78 @@ impl ManifestDelivery {
                     Some(f) => context.join(f),
                     None => context.join("Dockerfile"),
                 };
-
-                match self.buildah_get_manifest(blob_delivery, info).await {
-                    Ok(p) => Ok(p),
-                    Err(_) => {
-                        // assuming image not found in buildah cache
-                        self.buildah_build(&context, &dockerfile, info).await.unwrap();
-                        self.buildah_get_manifest(blob_delivery, info).await
-                    }
-                }
+                Ok(self.buildah_build_manifest(&blob_delivery, &context, &dockerfile, info).await.unwrap())
             },
             _ => self.nix_build_manifest(serve_root, info).await
         }
     }
 
-    async fn buildah_build(&self, context: &Path, dockerfile: &Path, info: &FetchInfo) -> Result<(), DockerError> {
+    async fn buildah_build_manifest(&self, blob_delivery: &BlobDelivery, context: &Path, dockerfile: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
+        let mut tar_file = NamedTempFile::new().unwrap();
+
         let mut child = Command::new("buildah")
             .arg("build")
             .arg("-f")
             .arg(dockerfile)
             .arg("-t")
-            .arg(&format!("{name}:{reference}", name=&info.name, reference=&info.reference))
+            .arg(&format!("oci-archive:{}", tar_file.path().to_str().unwrap()))
             .arg(context.to_str().unwrap())
             .spawn()
             .unwrap();
 
         child.status().await.unwrap();
-        Ok(())
-    }
 
-    async fn buildah_get_manifest(&self, blob_delivery: &BlobDelivery, info: &FetchInfo) -> Result<PathBuf, DockerError> {
-        //are we in cache ?
-        let child = Command::new("buildah")
-            .arg("inspect")
-            .arg(&format!("{name}:{reference}", name=&info.name, reference=&info.reference))
-            .stdout(Stdio::piped())
+        //TODO: consider input hashing the entire content and the dockerfile together,
+        // to form a filename for the build image output
+        let random_out_dir = Uuid::new_v4();
+
+        let buildah_cache_dir = unsafe { BUILDAH_CACHE_DIR.as_ref() };
+        let tar_out_directory = buildah_cache_dir.unwrap().join(random_out_dir.to_string());
+        std::fs::create_dir(&tar_out_directory).unwrap();
+
+        let mut child = Command::new("tar")
+            .arg("-xf")
+            .arg(tar_file.path())
+            .arg("-C")
+            .arg(&tar_out_directory)
             .spawn()
             .unwrap();
 
-        let out: Output = child.output().await.unwrap();
-        let inspect: BuildahInspect = serde_json::from_slice(out.stdout.as_slice()).map_err(|_| DockerError::blob_unknown(&info.reference))?;
-        let mut manifest: Manifest = serde_json::from_str(&inspect.manifest).unwrap();
-        manifest.media_type = CONTENT_TYPE_MANIFEST.to_owned();
-        manifest.config.media_type = CONTENT_TYPE_CONTAINER_CONFIG.to_owned();
+        child.status().await.unwrap();
 
-        let parts: Vec<&str> = manifest.config.digest.split(':').collect();
-        let raw_digest = parts[1];
-        blob_delivery.store_blob(BlobInfo{
-            name: manifest.config.digest.clone(),
-            content_type: manifest.config.media_type.clone(),
-            path: PathBuf::from(format!("/home/joho.local/share/containers/storage/vfs-layers/{}.tar-split.gz", &raw_digest)),
-        }, false).await;
+        let blob_dir = tar_out_directory.join("blobs").join("sha256");
 
-        for mut l in &mut manifest.layers {
-            l.media_type = CONTENT_TYPE_DIFFTAR.to_string();
-            let parts: Vec<&str> = l.digest.split(':').collect();
-            let raw_digest = parts[1];
-            blob_delivery.store_blob(BlobInfo{
-                name: l.digest.clone(),
-                content_type: l.media_type.clone(),
-                path: PathBuf::from(format!("/home/joho/.local/share/containers/storage/vfs-layers/{}.tar-split.gz", &raw_digest)),
-            }, false).await;
-        }
+        let mut f = std::fs::File::open(tar_out_directory.join("index.json")).unwrap();
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer).unwrap();
 
-        let manifest_body = json!(manifest).to_string();
-        let digest = {
-            let mut hasher = Sha256::new();
-            hasher.input_str(&manifest_body);
-            format!("sha256:{digest}", digest=hasher.result_str())
-        };
+        let index: OCIIndex = serde_json::from_slice(&buffer).unwrap();
+        let manifest_digest = index.manifests[0].digest.to_owned();
+        let parts: Vec<&str> = manifest_digest.split(':').collect();
+        let manifest_digest = parts[1];
 
-        let cache_dir = unsafe { BUILDAH_CACHE_DIR.as_ref().to_owned() };
-        let manifest_file = cache_dir.unwrap().join(digest);
-        std::fs::write(&manifest_file, manifest_body.as_bytes()).unwrap();
-        Ok(manifest_file)
+        let mut f = std::fs::File::open(blob_dir.join(&manifest_digest)).unwrap();
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer).unwrap();
+
+        let manifest: Manifest = serde_json::from_slice(&buffer).unwrap();
+        let new_manifest = transform_manifest(&manifest);
+        let new_manifest_json = json!(new_manifest).to_string();
+        let new_manifest_file_name = format!("{}.{}", sha256_digest_str(&new_manifest_json), "manifestjson");
+
+        let new_manifest_file_path = blob_dir.join(new_manifest_file_name);
+        let mut new_manifest_file = std::fs::File::create(&new_manifest_file_path).unwrap();
+        new_manifest_file.write_all(new_manifest_json.as_bytes()).unwrap();
+
+        let parts: Vec<&str> = new_manifest.config.digest.split(':').collect();
+        let config_file_digest = parts[1];
+
+        let config_file = blob_dir.join(&config_file_digest);
+        std::fs::rename(&config_file, format!("{}.{}", &config_file.to_str().unwrap(), "configjson")).unwrap();
+        std::fs::remove_file(blob_dir.join(&manifest_digest)).unwrap();
+        blob_delivery.discover_with_default_type(&blob_dir, CONTENT_TYPE_DIFFTAR).await;
+
+        Ok(new_manifest_file_path)
     }
 
     async fn nix_build_manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
@@ -480,6 +488,9 @@ impl BlobDelivery {
     }
 
     async fn discover(&self, path: &Path) {
+        self.discover_with_default_type(path, CONTENT_TYPE_UNKNOWN).await;
+    }
+    async fn discover_with_default_type(&self, path: &Path, tpe: &str) {
         // traverse blob path to discover new blobs
         for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()).filter(|e| e.path() != path) {
             let file_name = PathBuf::from(entry.file_name());
@@ -487,11 +498,12 @@ impl BlobDelivery {
             let name = format!("sha256:{digest}", digest=parts[0]);
             self.store_blob(BlobInfo{
                 name,
-                content_type: file_name_to_content_type(&file_name).to_string(),
+                content_type: file_name_to_content_type_with_default_type(&file_name, &tpe).to_string(),
                 path: entry.path().to_path_buf()
             }, false).await;
         }
     }
+
     fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
         match self {
             Self::Memory => {
@@ -920,12 +932,15 @@ async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixB
 }
 
 fn file_name_to_content_type(file_name: &Path) -> String {
+    file_name_to_content_type_with_default_type(file_name, CONTENT_TYPE_UNKNOWN)
+}
+fn file_name_to_content_type_with_default_type(file_name: &Path, tpe: &str) -> String {
     let extension = file_name.extension().unwrap_or(OsStr::new("")).to_str().unwrap_or("");
     match extension {
         "difftar" => CONTENT_TYPE_DIFFTAR,
         "configjson" => CONTENT_TYPE_CONTAINER_CONFIG,
         "manifestjson" => CONTENT_TYPE_MANIFEST,
-        _ => CONTENT_TYPE_UNKNOWN,
+        _ => tpe,
     }.to_string()
 }
 
@@ -993,4 +1008,17 @@ fn sha256_digest_str(input: &str) -> String {
     hasher.update(input);
     let hash = hasher.finalize();
     format!("{:x}", hash)
+}
+
+fn transform_manifest(input: &Manifest) -> Manifest {
+    let mut output = input.clone();
+
+    output.media_type = CONTENT_TYPE_MANIFEST.to_owned();
+    output.config.media_type = CONTENT_TYPE_CONTAINER_CONFIG.to_owned();
+
+    for mut l in &mut output.layers {
+        l.media_type = CONTENT_TYPE_DIFFTAR.to_string();
+    }
+
+    output
 }
