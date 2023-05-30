@@ -21,8 +21,8 @@ git2 = "0.14"
 tempdir = "0"
 tempfile = "3"
 regex = "1"
-mysql = { version = "22", optional = true }
-rust-crypto = "0"
+mysql = { version = "24", optional = true }
+sha2 = "0"
 dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main", features = ["log"], default-features = false }
 async-process = "1"
 
