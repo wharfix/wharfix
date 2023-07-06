@@ -10,19 +10,26 @@ jobs:
   bump-o-matic:
     runs-on: self-hosted
     steps:
-    - uses: actions/checkout@v2.3.4
+    - uses: actions/checkout@v3.5.3
     - name: Update dependencies
       run: |
-        nix-shell --run "niv update"
-        nix-shell --run "cargo update"
-        nix-shell --run "crate2nix generate -n '(import ./nix/sources.nix).nixpkgs' -f Cargo.toml"
+        nix --experimental-features "nix-command flakes" flake update
+        nix --experimental-features "nix-command flakes" develop --command cargo update
+
+    - name: Generate API token
+      uses: tibdex/github-app-token@v1
+      id: generate-token
+      with:
+        app_id: ${{ secrets.APP_ID }}
+        private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
     - name: Create pull request
       id: pr
-      uses: peter-evans/create-pull-request@v3.10.0
+      uses: peter-evans/create-pull-request@v5.0.2
       with:
         author: "dbcdk-platform <81445572+dbcdk-platform@users.noreply.github.com>"
         committer: "dbcdk-platform <81445572+dbcdk-platform@users.noreply.github.com>"
-        token: ${{secrets.PAT_BUMP_O_MATIC}}
+        token: ${{steps.generate-token.outputs.token}}
         commit-message: "bump-o-matic: update dependencies"
         branch: bump-o-matic
         delete-branch: true
@@ -32,7 +39,7 @@ jobs:
       uses: actions/github-script@v3
       if: ${{steps.pr.outputs.pull-request-operation != 'closed'}}
       with:
-        github-token: ${{secrets.PAT_BUMP_O_MATIC}}
+        github-token: ${{steps.generate-token.outputs.token}}
         script: |
           const res = await github.graphql(`query {
             repository(owner: "${context.repo.owner}", name: "${context.repo.repo}") {
