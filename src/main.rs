@@ -559,6 +559,7 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
 
     HttpServer::new(move || {
         App::new()
+            .route("/healthz", web::get().to(HttpResponse::Ok))
             .wrap_fn(|req, srv| {
                 log::new_session();
                 let host = req.headers().get("HOST").and_then(|hv| hv.to_str().ok()).unwrap_or("");
