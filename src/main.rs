@@ -54,6 +54,8 @@ static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
+static mut INDEX_FILE_IS_JSON: bool = false;
+static mut SERVABLES_ARE_PREBUILT: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 static mut ADD_NIX_GCROOTS: bool = false;
 
@@ -159,35 +161,52 @@ impl ManifestDelivery {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 log::data("looking for indexfile at", &fq);
-                {
-                    std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
+                let bytes = std::fs::read(&fq).map_err(|e| RepoError::IndexFile(e))?;
+            
+                if unsafe { INDEX_FILE_IS_JSON } {
+                    let index: HashMap<String, PathBuf> = serde_json::from_slice(&bytes).unwrap();
+                    match index.get(&format!("{}:{}", &info.name, &info.reference)) {
+                        Some(_) => Ok(()),
+                        None => Err(RepoError::IndexAttributeNotFound),
+                    }
+                } else {
+                    let mut cmd = Command::new("nix-instantiate");
+                    let child = cmd
+                        .arg("--eval")
+                        .arg("-E")
+                        .arg(format!("builtins.hasAttr \"{}\" (import {} {})", &info.name, &fq.to_str().unwrap(), "{}"))
+                        .stdout(Stdio::piped())
+                        .spawn().unwrap();
+
+                    let out: Output = child.output().await.unwrap();
+                    let mut line_bytes = vec!();
+                    let mut reader = LineReader::new(&out.stdout[..]);
+                    while let Some(line) = reader.next_line() {
+                        line_bytes = line.expect("read error").to_vec();
+                    }
+
+                    if String::from_utf8(line_bytes).unwrap().trim() == "false" {
+                        Err(RepoError::IndexAttributeNotFound)
+                    } else {
+                        Ok(())
+                    }
                 }
-            
-                let mut cmd = Command::new("nix-instantiate");
-                let child = cmd
-                    .arg("--eval")
-                    .arg("-E")
-                    .arg(format!("builtins.hasAttr \"{}\" (import {} {})", &info.name, &fq.to_str().unwrap(), "{}"))
-                    .stdout(Stdio::piped())
-                    .spawn().unwrap();
-            
-                let out: Output = child.output().await.unwrap();
-                let mut line_bytes = vec!();
-                let mut reader = LineReader::new(&out.stdout[..]);
-                while let Some(line) = reader.next_line() {
-                    line_bytes = line.expect("read error").to_vec();
-                }
-            
-                if String::from_utf8(line_bytes).unwrap().trim() == "false" {
-                    Err(RepoError::IndexAttributeNotFound)?
-                };
-                Ok(())
             },
             ManifestDelivery::Derivation(_) => Ok(())
         }
     }
     async fn manifest(&self, serve_root: &Path, info: &FetchInfo) -> Result<PathBuf, DockerError> {
         use std::io::Write;
+
+        let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
+        let bytes = std::fs::read(&fq).map_err(|e| DockerError::snafu(&format!("suddenly couldn't read the index file, but again, this shouldn't happen here: {:?}", e)))?;
+        if unsafe { SERVABLES_ARE_PREBUILT && INDEX_FILE_IS_JSON } {
+            let index: HashMap<String, PathBuf> = serde_json::from_slice(&bytes).unwrap();
+            return match index.get(&format!("{}:{}", &info.name, &info.reference)) {
+                Some(p) => Ok(p.to_path_buf()),
+                None => Err(DockerError::snafu("index attribute not found, but this shouldn't really happen at this time")),
+            };
+        }
 
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
@@ -228,7 +247,7 @@ impl ManifestDelivery {
         }
         .stdout(Stdio::piped())
         .spawn().unwrap();
-    
+
         let out: Output = child.output().await.unwrap();
         let mut line_bytes = vec!();
         let mut reader = LineReader::new(out.stdout.as_slice());
@@ -461,6 +480,16 @@ fn main() {
         .help("Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper)")
         .takes_value(false)
         .required(false))
+    .arg(clap::Arg::with_name("indexfileisjson")
+        .long("index-file-is-json")
+        .help("Set if the provided index-file is json and not nix")
+        .takes_value(false)
+        .required(false))
+    .arg(clap::Arg::with_name("prebuiltservables")
+        .long("prebuilt-servables")
+        .help("Set if index values contains prebuilt servable paths")
+        .takes_value(false)
+        .required(false))
     .arg(clap::Arg::with_name("sshprivatekey")
         .long("ssh-private-key")
         .help("Path to optional ssh private key file")
@@ -533,6 +562,8 @@ fn main() {
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
+            INDEX_FILE_IS_JSON = m.is_present("indexfileisjson");
+            SERVABLES_ARE_PREBUILT = m.is_present("prebuiltservables");
             SSH_PRIVATE_KEY = fo;
             ADD_NIX_GCROOTS = m.is_present("addnixgcroots");
         }
