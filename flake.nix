@@ -63,6 +63,7 @@
         rustc
         nix
         rustfmt
+        just
       ];
     };
   };
