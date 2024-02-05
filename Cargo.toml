@@ -17,7 +17,7 @@ uuid = { version = "0", features = ["v4"] }
 lazy_static = "1"
 linereader = "0"
 walkdir = "2"
-git2 = "0.14"
+git2 = "0.16"
 tempdir = "0"
 tempfile = "3"
 regex = "1"
