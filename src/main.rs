@@ -30,6 +30,7 @@ use linereader::LineReader;
 use std::sync::RwLock;
 use git2::build::CheckoutBuilder;
 
+use futures::stream::once;
 use futures::future::{ok, err, Ready};
 
 use regex::Regex;
@@ -691,10 +692,11 @@ impl Responder for WharfixBlob {
     type Body = BoxBody;
 
     fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
+        let body = once(ok::<_, actix_web::Error>(web::Bytes::from(self.blob)));
         HttpResponse::Ok()
             .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
             .content_type(self.content_type.as_str())
-            .body(self.blob)
+            .streaming(body)
     }
 }
 
