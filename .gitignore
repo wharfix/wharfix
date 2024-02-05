@@ -3,3 +3,5 @@
 /target
 result*
 **/*.rs.bk
+
+.direnv
