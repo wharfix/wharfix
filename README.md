@@ -20,3 +20,7 @@ Images are named after their filenames (without .nix extension).
 The image tag is currently ignored.
 
 Try out: `docker run -it localhost:8080/sl:master`
+
+## Integration Testing
+
+If in the Nix devshell, running `just i` will test whether docker is able to pull from wharfix.
