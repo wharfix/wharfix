@@ -5,3 +5,5 @@ result*
 **/*.rs.bk
 
 .direnv
+
+.nixos-test-history

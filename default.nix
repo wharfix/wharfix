@@ -7,4 +7,5 @@ in
 {
   entryscript = import ./examples/entryscript.nix { inherit pkgs; };
   toolbox = import ./examples/toolbox.nix { inherit pkgs; };
+  large = import ./examples/large.nix { inherit pkgs; };
 }

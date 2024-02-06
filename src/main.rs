@@ -30,6 +30,7 @@ use linereader::LineReader;
 use std::sync::RwLock;
 use git2::build::CheckoutBuilder;
 
+use futures::Stream;
 use futures::stream::once;
 use futures::future::{ok, err, Ready};
 
@@ -159,11 +160,8 @@ impl ManifestDelivery {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
-                log::data("looking for indexfile at", &fq);
-                {
-                    std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
-                }
-            
+                println!("{:#?}", fq.to_str().unwrap());
+
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
                     .arg("--eval")
