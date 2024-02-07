@@ -10,8 +10,8 @@
     src = pkgs.fetchFromGitHub {
       owner = "wharfix";
       repo = "examples";
-      rev = "edc905b9f3fe15c0144cf5ef9fe3e8430455b841";
-      hash = "sha256-zpifSw5rPqkS6pMp7f65RIQOdZ040sR8A7zm5vZFXRQ=";
+      rev = "c09ebe2355b69f919f0dd2197d3d4c609fb6fb33";
+      hash = "sha256-sKvmqbMvJeLv0vo7kgVBdqSuKsOFdUXsbizlrVwxjlA=";
     };
 
 
@@ -37,7 +37,9 @@
 
     nodes = {
       registry = { config, ... }: {
-        virtualisation.memorySize = 2048;
+        virtualisation.memorySize = 2048; # 2 G
+        virtualisation.diskSize = 100240; # 10 G
+        virtualisation.writableStoreUseTmpfs = false;
 
         environment.etc.nixpkgs.source = builtins.fetchTarball {
           url = "https://github.com/NixOS/nixpkgs/archive/71d7a4c037dc4f3e98d5c4a81b941933cf5bf675.tar.gz";
@@ -76,6 +78,7 @@
       };
 
       client1 = { ... }: {
+        virtualisation.diskSize = 10240; # 10 G
         environment.systemPackages = with pkgs; [
           git
         ];
@@ -92,7 +95,7 @@
           registry.wait_for_open_port(8080)
           registry.wait_for_unit("wharfix.service")
 
-          client1.succeed("docker pull registry:8080/sl:master")
+          client1.succeed("docker pull registry:8080/hugepkg:master")
           # client1.succeed("docker run -it registry:8080/sl:master")
         '';
   };
