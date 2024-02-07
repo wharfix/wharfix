@@ -37,7 +37,7 @@
 
     nodes = {
       registry = { config, ... }: {
-        virtualisation.memorySize = 2048; # 2 G
+        virtualisation.memorySize = 4096; # 2 G
         virtualisation.diskSize = 100240; # 10 G
         virtualisation.writableStoreUseTmpfs = false;
 
@@ -78,7 +78,7 @@
       };
 
       client1 = { ... }: {
-        virtualisation.diskSize = 10240; # 10 G
+        virtualisation.diskSize = 40240; # 10 G
         environment.systemPackages = with pkgs; [
           git
         ];

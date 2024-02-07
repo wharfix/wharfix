@@ -45,6 +45,13 @@ use serde::Deserialize;
 use lazy_static::lazy_static;
 use serde_json::json;
 
+use get_chunk::data_size_format::iec::IECUnit;
+use get_chunk::stream::{FileStream, StreamExt};
+use get_chunk::iterator::FileIter;
+//use tokio::fs::File;
+use std::fs::File;
+use async_stream::stream;
+
 #[cfg(feature = "mysql")]
 use mysql::{params, Pool, prelude::Queryable};
 
@@ -682,7 +689,8 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
 }
 
 struct WharfixBlob {
-    blob: Vec<u8>,
+    blob: FileIter<File>,
+    //blob: FileIter<File>,
     content_type: String
 }
 
@@ -690,28 +698,42 @@ impl Responder for WharfixBlob {
     type Body = BoxBody;
 
     fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
-        let body = once(ok::<_, actix_web::Error>(web::Bytes::from(self.blob)));
+        //let body = once(ok::<_, actix_web::Error>(web::Bytes::from(self.blob)));
+        let content_type = String::from(self.content_type.as_str());
+        let body = stream! {
+            for byte in self.blob {
+                match byte {
+                    Ok(byte) => yield Ok(web::Bytes::from(byte)),
+                    Err(error) => yield Err(error)
+                }
+            }
+        };
         HttpResponse::Ok()
             .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
-            .content_type(self.content_type.as_str())
+            .content_type(content_type)
             .streaming(body)
+            //.streaming(self.blob)
     }
 }
-
 
 async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
     match registry.blob(&info).await {
         Ok(blob_info) => {
-            match fs::read(&blob_info.path) {
-                Ok(blob) => Ok(WharfixBlob{
-                    content_type: blob_info.content_type.clone(),
-                    blob
-                }),
-                Err(e) => {
-                    log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
-                    Err(e.blob_context(&info))
-                }
-            }
+            Ok(WharfixBlob {
+                content_type: blob_info.content_type.clone(),
+                blob: FileIter::new(blob_info.path.display().to_string()).unwrap()
+                //blob: FileIter::new(blob_info.path.display().to_string()).await.unwrap()
+            })
+            // match file_stream {
+            //     Ok(blob) => Ok(WharfixBlob{
+            //         content_type: blob_info.content_type.clone(),
+            //         blob
+            //     }),
+            //     Err(e) => {
+            //         log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
+            //         Err(e.blob_context(&info))
+            //     }
+            // }
         },
         Err(e) => {
             Err(e)
