@@ -30,8 +30,6 @@ use linereader::LineReader;
 use std::sync::RwLock;
 use git2::build::CheckoutBuilder;
 
-use futures::Stream;
-use futures::stream::once;
 use futures::future::{ok, err, Ready};
 
 use regex::Regex;
@@ -45,10 +43,7 @@ use serde::Deserialize;
 use lazy_static::lazy_static;
 use serde_json::json;
 
-use get_chunk::data_size_format::iec::IECUnit;
-use get_chunk::stream::{FileStream, StreamExt};
 use get_chunk::iterator::FileIter;
-//use tokio::fs::File;
 use std::fs::File;
 use async_stream::stream;
 
@@ -167,7 +162,7 @@ impl ManifestDelivery {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
-                println!("{:#?}", fq.to_str().unwrap());
+                log::data("looking for indexfile at", &fq);
 
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
@@ -688,9 +683,11 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
     }
 }
 
+/// Struct containing docker image layers
 struct WharfixBlob {
+    // FileIter reads from the filesystem in chunks, in order to avoid
+    // exhausting memory
     blob: FileIter<File>,
-    //blob: FileIter<File>,
     content_type: String
 }
 
@@ -698,8 +695,10 @@ impl Responder for WharfixBlob {
     type Body = BoxBody;
 
     fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
-        //let body = once(ok::<_, actix_web::Error>(web::Bytes::from(self.blob)));
         let content_type = String::from(self.content_type.as_str());
+
+        // Turns the FileIter from a Result<Vec<u8>, _> into a
+        // Result<Bytes, Error> which is what HttpResponse.streaming() expects.
         let body = stream! {
             for byte in self.blob {
                 match byte {
@@ -708,39 +707,28 @@ impl Responder for WharfixBlob {
                 }
             }
         };
+
         HttpResponse::Ok()
             .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
             .content_type(content_type)
             .streaming(body)
-            //.streaming(self.blob)
     }
 }
 
 async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
     match registry.blob(&info).await {
         Ok(blob_info) => {
+            let blob_path = blob_info.path.display().to_string();
             Ok(WharfixBlob {
                 content_type: blob_info.content_type.clone(),
-                blob: FileIter::new(blob_info.path.display().to_string()).unwrap()
-                //blob: FileIter::new(blob_info.path.display().to_string()).await.unwrap()
+                blob: FileIter::new(blob_path.clone()).expect(&format!("Failed to open {blob_path}."))
             })
-            // match file_stream {
-            //     Ok(blob) => Ok(WharfixBlob{
-            //         content_type: blob_info.content_type.clone(),
-            //         blob
-            //     }),
-            //     Err(e) => {
-            //         log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
-            //         Err(e.blob_context(&info))
-            //     }
-            // }
         },
         Err(e) => {
+            log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
             Err(e)
         }
     }
-
-
 }
 
 fn file_name_to_content_type(file_name: &Path) -> String {

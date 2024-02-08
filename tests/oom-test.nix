@@ -30,21 +30,14 @@
   type = "app";
   default = program;
   program = pkgs.nixosTest {
-    name = "docker-registry-2";
-    meta = with pkgs.lib.maintainers; {
-      maintainers = [ globin ironpinguin ];
-    };
+    name = "oom-test";
 
     nodes = {
       registry = { config, ... }: {
-        virtualisation.memorySize = 4096; # 2 G
-        virtualisation.diskSize = 100240; # 10 G
+        virtualisation.memorySize = 4096;
+        virtualisation.diskSize = 100240;
         virtualisation.writableStoreUseTmpfs = false;
 
-        environment.etc.nixpkgs.source = builtins.fetchTarball {
-          url = "https://github.com/NixOS/nixpkgs/archive/71d7a4c037dc4f3e98d5c4a81b941933cf5bf675.tar.gz";
-          sha256 = "sha256:0mz1mrygnpwv87dd0sac32q3m8902ppn9zrkn4wrryljwvvpf60s";
-        };
         environment.systemPackages = with pkgs; [
           git
           (pkgs.writeShellScriptBin "make-repo" ''
@@ -78,10 +71,7 @@
       };
 
       client1 = { ... }: {
-        virtualisation.diskSize = 40240; # 10 G
-        environment.systemPackages = with pkgs; [
-          git
-        ];
+        virtualisation.diskSize = 40240;
         virtualisation.docker.enable = true;
         virtualisation.docker.extraOptions = "--insecure-registry registry:8080";
       };
@@ -96,7 +86,6 @@
           registry.wait_for_unit("wharfix.service")
 
           client1.succeed("docker pull registry:8080/hugepkg:master")
-          # client1.succeed("docker run -it registry:8080/sl:master")
         '';
   };
 }
