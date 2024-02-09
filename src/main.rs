@@ -43,6 +43,10 @@ use serde::Deserialize;
 use lazy_static::lazy_static;
 use serde_json::json;
 
+use get_chunk::iterator::FileIter;
+use std::fs::File;
+use async_stream::stream;
+
 #[cfg(feature = "mysql")]
 use mysql::{params, Pool, prelude::Queryable};
 
@@ -159,10 +163,7 @@ impl ManifestDelivery {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
                 log::data("looking for indexfile at", &fq);
-                {
-                    std::fs::File::open(&fq).map_err(|e| RepoError::IndexFile(e))?;
-                }
-            
+
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
                     .arg("--eval")
@@ -682,8 +683,11 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
     }
 }
 
+/// Struct containing docker image layers
 struct WharfixBlob {
-    blob: Vec<u8>,
+    // FileIter reads from the filesystem in chunks, in order to avoid
+    // exhausting memory
+    blob: FileIter<File>,
     content_type: String
 }
 
@@ -691,34 +695,40 @@ impl Responder for WharfixBlob {
     type Body = BoxBody;
 
     fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
+        let content_type = String::from(self.content_type.as_str());
+
+        // Turns the FileIter from a Result<Vec<u8>, _> into a
+        // Result<Bytes, Error> which is what HttpResponse.streaming() expects.
+        let body = stream! {
+            for byte in self.blob {
+                match byte {
+                    Ok(byte) => yield Ok(web::Bytes::from(byte)),
+                    Err(error) => yield Err(error)
+                }
+            }
+        };
+
         HttpResponse::Ok()
             .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
-            .content_type(self.content_type.as_str())
-            .body(self.blob)
+            .content_type(content_type)
+            .streaming(body)
     }
 }
-
 
 async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixBlob, DockerError> {
     match registry.blob(&info).await {
         Ok(blob_info) => {
-            match fs::read(&blob_info.path) {
-                Ok(blob) => Ok(WharfixBlob{
-                    content_type: blob_info.content_type.clone(),
-                    blob
-                }),
-                Err(e) => {
-                    log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
-                    Err(e.blob_context(&info))
-                }
-            }
+            let blob_path = blob_info.path.display().to_string();
+            Ok(WharfixBlob {
+                content_type: blob_info.content_type.clone(),
+                blob: FileIter::new(blob_path.clone()).expect(&format!("Failed to open {blob_path}."))
+            })
         },
         Err(e) => {
+            log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
             Err(e)
         }
     }
-
-
 }
 
 fn file_name_to_content_type(file_name: &Path) -> String {

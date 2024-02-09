@@ -31,7 +31,6 @@
   in {
     packages.${system} = lib.mapAttrs (n: _: pkgs.${n}) outputPackages;
     defaultPackage.${system} = pkgs.${pname};
-
     overlay = final: prev:
     let
       cratePackage = name: features:
@@ -56,6 +55,16 @@
     in
       lib.mapAttrs cratePackage outputPackages;
 
+    apps."x86_64-linux" = {
+      oom-test =
+        let
+          inherit pkgs;
+          inherit nixpkgs;
+          wharfix = self.packages.default;
+        in
+          (import ./tests/oom-test.nix { inherit self; inherit pkgs; inherit nixpkgs; }).default;
+    };
+
     devShell.${system} = with pkgs; mkShell {
       inputsFrom = [ self.defaultPackage.${system} ];
       nativeBuildInputs = [
@@ -65,6 +74,10 @@
         rustfmt
         just
       ];
+    };
+
+    checks."x86_64-linux" = {
+      default = self.apps."x86_64-linux".oom-test;
     };
   };
 }
