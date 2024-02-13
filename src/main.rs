@@ -769,12 +769,10 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Resu
     cb.update_index(false);
     cb.target_dir(tmp_path);
 
-    let obj = {
-        let new_reference = format!("refs/remotes/origin/{reference}",reference=&reference);
-        log::info(&format!("Chaging ref: {} to: {}", &reference, &new_reference));
-        repo.revparse_single(new_reference.as_str()).or_else(|e| Err(RepoError::Git(e)))
-    }?;
-    log::info(&format!("checking out revision: {}", &obj.id()));
+    let obj = repo.revparse_single(reference.as_str()).or_else(|_| {
+        let rev = format!("refs/remotes/origin/{reference}",reference=&reference);
+        repo.revparse_single(rev.as_str()).or_else(|e| Err(RepoError::Git(e)))
+    })?;
     repo.checkout_tree(&obj, Some(&mut cb)).or_else(|e| Err(RepoError::Git(e)))?;
     Ok(())
 }
