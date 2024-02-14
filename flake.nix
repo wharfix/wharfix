@@ -5,9 +5,10 @@
     crane.url = "github:ipetkov/crane";
     crane.inputs.nixpkgs.follows = "nixpkgs";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
-  outputs = { self, crane, nixpkgs }:
+  outputs = { self, crane, nixpkgs, nixpkgs-unstable }:
   let
     pname = "wharfix";
     system = "x86_64-linux";
@@ -19,6 +20,10 @@
       craneLib = crane.mkLib prev;
     };
     pkgs = import nixpkgs {
+      inherit system;
+      overlays = [ self.overlay crane-overlay ];
+    };
+    pkgs-unstable = import nixpkgs-unstable {
       inherit system;
       overlays = [ self.overlay crane-overlay ];
     };
@@ -69,10 +74,13 @@
       inputsFrom = [ self.defaultPackage.${system} ];
       nativeBuildInputs = [
         cargo
-        rustc
         nix
         rustfmt
         just
+
+        # In order to support clap 4.5, we need at least rustc 1.74.0, and
+        # 23.11 has at most 1.73.0.
+        pkgs-unstable.rustc
       ];
     };
 
