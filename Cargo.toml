@@ -1,7 +1,6 @@
 [package]
 name = "wharfix"
 version = "0.1.0"
-authors = ["Johan Thomsen <jth@dbc.dk>"]
 edition = "2021"
 
 [dependencies]
