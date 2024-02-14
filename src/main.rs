@@ -737,7 +737,7 @@ fn file_name_to_content_type(file_name: &Path) -> String {
 }
 
 fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
-    use git2::build::RepoBuilder;
+    use git2::RepositoryInitOptions;
 
     let root_dir = TARGET_DIR.get().unwrap().as_ref().unwrap();
     let clone_target = root_dir.join(pathname_generator(name, url));
@@ -745,11 +745,12 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     Ok(if clone_target.exists() {
         Repository::open_bare(&clone_target).or_else(|e| Err(RepoError::Git(e)))
     } else {
-        log::info(&format!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target));
-        let mut rb = RepoBuilder::new();
-        rb.fetch_options(fetch_options());
-        rb.bare(true);
-        rb.clone(url, &clone_target).or_else(|e| Err(RepoError::Git(e)))
+        log::info(&format!("registry, url: {}, {} - does not exist, initing at: {:?}", &name, &url, &clone_target));
+        let mut init_opts = RepositoryInitOptions::new();
+        init_opts.bare(true);
+        init_opts.no_reinit(true);
+        init_opts.origin_url(url);
+        Repository::init_opts(&clone_target, &init_opts).or_else(|e| Err(RepoError::Git(e)))
     }?)
 }
 
