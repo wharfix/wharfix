@@ -453,24 +453,24 @@ fn main() {
         });
 
         let blob_cache_dir = {
-            if m.contains_id("blob_cache_dir") {
-                Some(fs::canonicalize(m.get_one::<String>("blob_cache_dir").unwrap()).unwrap())
+            if m.contains_id("blobcachedir") {
+                Some(fs::canonicalize(m.get_one::<String>("blobcachedir").unwrap()).unwrap())
             } else {
                 None
             }
         };
 
-        let fo = m.get_one::<String>("ssh_private_key").map(|p| PathBuf::from(p));
+        let fo = m.get_one::<String>("sshprivatekey").map(|p| PathBuf::from(p));
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.get_one::<String>("substituters").map(|s| s.to_string());
-            INDEX_FILE_PATH = Some(PathBuf::from(m.get_one::<String>("index_file_path").unwrap()));
-            INDEX_FILE_IS_BUILDABLE = m.contains_id("index_file_is_buildable");
+            INDEX_FILE_PATH = Some(PathBuf::from(m.get_one::<String>("indexfilepath").unwrap()));
+            INDEX_FILE_IS_BUILDABLE = m.contains_id("indexfileisbuildable");
             SSH_PRIVATE_KEY = fo;
-            ADD_NIX_GCROOTS = m.contains_id("add_nix_gcroots");
+            ADD_NIX_GCROOTS = m.contains_id("addnixgcroots");
         }
 
         listen(listen_address, listen_port)

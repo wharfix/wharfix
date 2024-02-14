@@ -5,18 +5,20 @@ pub fn build_cli() -> Command {
         .author(crate_authors!("\n"))
         .arg(
             arg!(--path <PATH> "Path to directory of static docker image specs.")
-                .required_unless_present_any(["repo", "dbconnfile", "derivation_output"]),
+                .required_unless_present_any(["repo", "dbconnfile", "derivationoutput"]),
         )
         .arg(
             arg!(--repo <REPO> "URL to git repository.")
                 .required_unless_present_any([
                 "path",
                 "dbconnfile",
-                "derivation_output",
+                "derivationoutput",
             ]),
         )
         .arg(
-            arg!(--derivation_output <DERIVATIONOUTPUT> "Output which servable derivations need to produce to be valid.")
+            arg!(derivationoutput: <DERIVATIONOUTPUT> "Output which servable derivations need to produce to be valid.")
+                .long("derivation-output")
+                .required(false)
                 .required_unless_present_any([
                     "path",
                     "dbconnfile",
@@ -29,7 +31,8 @@ pub fn build_cli() -> Command {
                 .required(false)
         )
         .arg(
-            arg!(--blob_cache_dir <BLOBCACHEDIR> "Directory in which to store persitent symlinks to docker layer blobs.")
+            arg!(blobcachedir: <BLOBCACHEDIR> "Directory in which to store persitent symlinks to docker layer blobs.")
+                .long("blob-cache-dir")
                 .required(false)
         )
         .arg(
@@ -37,22 +40,26 @@ pub fn build_cli() -> Command {
                 .required(false)
         )
         .arg(
-            arg!(--index_file_path <INDEXFILEPATH> "Path to repository index file.")
+            arg!(indexfilepath: <INDEXFILEPATH> "Path to repository index file.")
+                .long("index-file-path")
                 .default_value("default.nix")
                 .required(false)
         )
         .arg(
-            arg!(--index_file_is_buildable "Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).")
+            arg!(indexfileisbuildable: "Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).")
+                .long("index-file-is-buildable")
                 .required(false)
         )
         .arg(
-            arg!(--ssh_private_key <SSHPRIVATEKEY> "Path to optional ssh private key file.")
+            arg!(sshprivatekey:<SSHPRIVATEKEY> "Path to optional ssh private key file.")
+                .long("ssh-private-key")
                 .required(false)
         )
         .arg(
-            arg!(--add_nix_gcroots "Whether to add nix gcroots for blobs cached in blob cache dir.")
+            arg!(addnixgcroots: "Whether to add nix gcroots for blobs cached in blob cache dir.")
+                .long("add-nix-gcroots")
                 .required(false)
-                .requires("blob_cache_dir")
+                .requires("blobcachedir")
         )
         .arg(
             arg!(--address <ADDRESS> "Listen address to open on <port>.")
@@ -69,7 +76,7 @@ pub fn build_cli() -> Command {
                 .required_unless_present_any([
                     "path",
                     "repo",
-                    "derivation_output",
+                    "derivationoutput",
                 ]),
         )
 }
