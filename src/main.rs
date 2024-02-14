@@ -421,14 +421,9 @@ fn main() {
 
     log::init(APP_NAME.to_string()).unwrap();
 
-    let matches = clap::build_cli().get_matches();
-
-    // TODO: here once lived some parsing definitions.
-
     if let Err(e) = || -> Result<(), MainError> {
 
         let m = clap::build_cli().get_matches();
-        // let m = args.get_matches();
         let listen_address = m.get_one::<String>("address").unwrap().to_string();
         let listen_port: u16 = m.get_one::<String>("port")
             .ok_or(MainError::ArgParse("Missing cmdline arg 'port'"))?.parse()
