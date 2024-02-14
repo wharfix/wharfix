@@ -5,21 +5,23 @@ pub fn build_cli() -> Command {
         .author(crate_authors!("\n"))
         .arg(
             arg!(--path <PATH> "Path to directory of static docker image specs.")
-                .required_unless_present_any(["repo", "dbconnfile", "derivationoutput"]),
+                .required_unless_present_any(["repo", "dbconnfile", "derivation_output"]),
         )
         .arg(
-            arg!(--repo <REPO> "URL to git repository.").required_unless_present_any([
+            arg!(--repo <REPO> "URL to git repository.")
+                .required_unless_present_any([
                 "path",
                 "dbconnfile",
-                "derivationoutput",
+                "derivation_output",
             ]),
         )
         .arg(
-            arg!(--derivation-output <DERIVATIONOUTPUT> "Output which servable derivations need to produce to be valid.").required_unless_present_any([
-                "path",
-                "dbconnfile",
-                "repo",
-            ]),
+            arg!(--derivation_output <DERIVATIONOUTPUT> "Output which servable derivations need to produce to be valid.")
+                .required_unless_present_any([
+                    "path",
+                    "dbconnfile",
+                    "repo",
+                ]),
         )
         .arg(
             arg!(--target <TARGET> "Target path in which to checkout repos.")
@@ -27,7 +29,7 @@ pub fn build_cli() -> Command {
                 .required(false)
         )
         .arg(
-            arg!(--blob-cache-dir <BLOBCACHEDIR> "Directory in which to store persitent symlinks to docker layer blobs.")
+            arg!(--blob_cache_dir <BLOBCACHEDIR> "Directory in which to store persitent symlinks to docker layer blobs.")
                 .required(false)
         )
         .arg(
@@ -35,23 +37,22 @@ pub fn build_cli() -> Command {
                 .required(false)
         )
         .arg(
-            arg!(--index-file-path <INDEXFILEPATH> "Path to repository index file.")
+            arg!(--index_file_path <INDEXFILEPATH> "Path to repository index file.")
                 .default_value("default.nix")
                 .required(false)
         )
         .arg(
-            arg!(--index-file-is-buildable "Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).")
-                .default_value("default.nix")
+            arg!(--index_file_is_buildable "Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).")
                 .required(false)
         )
         .arg(
-            arg!(--ssh-private-key <SSHPRIVATEKEY> "Path to optional ssh private key file.")
+            arg!(--ssh_private_key <SSHPRIVATEKEY> "Path to optional ssh private key file.")
                 .required(false)
         )
         .arg(
-            arg!(--add-nix-gcroots "Whether to add nix gcroots for blobs cached in blob cache dir.")
+            arg!(--add_nix_gcroots "Whether to add nix gcroots for blobs cached in blob cache dir.")
                 .required(false)
-                .requires("blobcachedir")
+                .requires("blob_cache_dir")
         )
         .arg(
             arg!(--address <ADDRESS> "Listen address to open on <port>.")
@@ -62,6 +63,14 @@ pub fn build_cli() -> Command {
             arg!(--port <PORT> "Listen port to open on <address>.")
                 .required(true)
                 .default_value("8088")
+        )
+        .arg(
+            arg!(--dbconnfile <DBCONNFILE> "Path to file from which to read db connection details.")
+                .required_unless_present_any([
+                    "path",
+                    "repo",
+                    "derivation_output",
+                ]),
         )
 }
 

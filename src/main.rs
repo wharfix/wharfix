@@ -429,12 +429,12 @@ fn main() {
 
         let m = clap::build_cli().get_matches();
         // let m = args.get_matches();
-        let listen_address = m.get_one::<&str>("ADDRESS").unwrap().to_string();
-        let listen_port: u16 = m.get_one::<&str>("PORT")
+        let listen_address = m.get_one::<String>("address").unwrap().to_string();
+        let listen_port: u16 = m.get_one::<String>("port")
             .ok_or(MainError::ArgParse("Missing cmdline arg 'port'"))?.parse()
             .or(Err(MainError::ArgParse("cmdline arg 'port' doesn't look like a port number")))?;
 
-        let target_dir = PathBuf::from_str(m.get_one::<&str>("TARGET").unwrap()).unwrap();
+        let target_dir = PathBuf::from_str(m.get_one::<String>("target").unwrap()).unwrap();
         fs::create_dir(&target_dir).or_else(|e| -> Result<(), std::io::Error> {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => Ok(()),
@@ -443,34 +443,34 @@ fn main() {
         }).unwrap();
 
         let serve_type = Some(match &m {
-           m if m.contains_id("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.get_one::<&str>("PATH").unwrap()).unwrap().as_path())
+           m if m.contains_id("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.get_one::<String>("path").unwrap()).unwrap().as_path())
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
-           m if m.contains_id("repo") => ServeType::Repo(m.get_one::<&str>("REPO").unwrap().to_string()),
+           m if m.contains_id("repo") => ServeType::Repo(m.get_one::<String>("repo").unwrap().to_string()),
            #[cfg(feature = "mysql")]
-           m if m.contains_id("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.get_one::<&str>("DBCONNFILE").unwrap()).unwrap())),
-           m if m.contains_id("derivationoutput") => ServeType::Derivation(m.get_one::<&str>("DERIVATIONOUTPUT").unwrap().to_string()),
+           m if m.contains_id("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.get_one::<String>("dbconnfile").unwrap()).unwrap())),
+           m if m.contains_id("derivationoutput") => ServeType::Derivation(m.get_one::<String>("derivationoutput").unwrap().to_string()),
            _ => panic!("clap should ensure this never happens")
         });
 
         let blob_cache_dir = {
-            if m.contains_id("blobcachedir") {
-                Some(fs::canonicalize(m.get_one::<&str>("BLOBCACHEDIR").unwrap()).unwrap())
+            if m.contains_id("blob_cache_dir") {
+                Some(fs::canonicalize(m.get_one::<String>("blob_cache_dir").unwrap()).unwrap())
             } else {
                 None
             }
         };
 
-        let fo = m.get_one::<&str>("SSHPRIVATEKEY").map(|p| PathBuf::from(p));
+        let fo = m.get_one::<String>("ssh_private_key").map(|p| PathBuf::from(p));
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
             BLOB_CACHE_DIR = blob_cache_dir;
-            SUBSTITUTERS = m.get_one::<&str>("SUBSTITUTERS").map(|s| s.to_string());
-            INDEX_FILE_PATH = Some(PathBuf::from(m.get_one::<&str>("INDEXFILEPATH").unwrap()));
-            INDEX_FILE_IS_BUILDABLE = m.contains_id("indexfileisbuildable");
+            SUBSTITUTERS = m.get_one::<String>("substituters").map(|s| s.to_string());
+            INDEX_FILE_PATH = Some(PathBuf::from(m.get_one::<String>("index_file_path").unwrap()));
+            INDEX_FILE_IS_BUILDABLE = m.contains_id("index_file_is_buildable");
             SSH_PRIVATE_KEY = fo;
-            ADD_NIX_GCROOTS = m.contains_id("addnixgcroots");
+            ADD_NIX_GCROOTS = m.contains_id("add_nix_gcroots");
         }
 
         listen(listen_address, listen_port)
