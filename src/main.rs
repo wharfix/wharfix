@@ -463,9 +463,9 @@ fn main() {
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.get_one::<String>("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.get_one::<String>("indexfilepath").unwrap()));
-            INDEX_FILE_IS_BUILDABLE = m.contains_id("indexfileisbuildable");
+            INDEX_FILE_IS_BUILDABLE = m.get_one::<bool>("indexfileisbuildable").is_some();
             SSH_PRIVATE_KEY = fo;
-            ADD_NIX_GCROOTS = m.contains_id("addnixgcroots");
+            ADD_NIX_GCROOTS = m.get_one::<bool>("addnixgcroots").is_some();
         }
 
         listen(listen_address, listen_port)

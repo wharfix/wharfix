@@ -47,6 +47,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             arg!(indexfileisbuildable: "Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).")
+                .action(clap::ArgAction::SetTrue)
                 .long("index-file-is-buildable")
                 .required(false)
         )
@@ -58,6 +59,7 @@ pub fn build_cli() -> Command {
         .arg(
             arg!(addnixgcroots: "Whether to add nix gcroots for blobs cached in blob cache dir.")
                 .long("add-nix-gcroots")
+                .action(clap::ArgAction::SetTrue)
                 .required(false)
                 .requires("blobcachedir")
         )
