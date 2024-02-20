@@ -51,11 +51,11 @@ valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).
 
 ##### Authenticating over SSH
 
-To access ssh authentication based repositories, specify a ssh private key with `--ssh-private-key <sshprivatekey`.
+To access ssh authentication based repositories, specify a ssh private key with `--ssh-private-key <sshprivatekey>`.
 
 ##### Substituters
 
-To use substituters for internal wharfix calls to `nix-build`, use the `--subtituters <substituters>` option to specify a comma-separated list of nix substituters.
+To use substituters for internal wharfix calls to `nix-build`, use the `--substituters <substituters>` option to specify a comma-separated list of nix substituters.
 
 ##### Blobcache
 
