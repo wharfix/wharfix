@@ -55,7 +55,7 @@
     in
       lib.mapAttrs cratePackage outputPackages;
 
-    apps."x86_64-linux" = {
+    apps."x86_64-linux" = rec {
       oom-test =
         let
           inherit pkgs;
@@ -63,6 +63,13 @@
           wharfix = self.packages.default;
         in
           (import ./tests/oom-test.nix { inherit self; inherit pkgs; inherit nixpkgs; }).default;
+      arguments-test =
+        let
+          inherit pkgs;
+          inherit nixpkgs;
+          wharfix = self.packages.default;
+        in
+          (import ./tests/arguments-test.nix { inherit self; inherit pkgs; inherit nixpkgs; }).default;
     };
 
     devShell.${system} = with pkgs; mkShell {
@@ -77,7 +84,8 @@
     };
 
     checks."x86_64-linux" = {
-      default = self.apps."x86_64-linux".oom-test;
+      oom-test = self.apps."x86_64-linux".oom-test.program;
+      arguments-test = self.apps."x86_64-linux".arguments-test.program;
     };
   };
 }

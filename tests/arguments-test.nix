@@ -53,7 +53,7 @@
           '')
           (pkgs.writeShellScriptBin "run-wharfix" ''
             cd /etc/repo/;
-            ${pkgs.wharfix}/bin/wharfix --repo file:///etc/repo --port 8080;
+            ${pkgs.wharfix}/bin/wharfix --repo file:///etc/repo --port 8080 --address 0.0.0.0 --index-file-path default.nix --blob-cache-dir /root/ --add-nix-gcroots --target /tmp/wharfix;
           '')
         ];
         systemd.services.wharfix = {
@@ -85,7 +85,7 @@
           registry.wait_for_open_port(8080)
           registry.wait_for_unit("wharfix.service")
 
-          client1.succeed("docker pull registry:8080/hugepkg:master")
+          client1.succeed("docker pull registry:8080/nyancat:master")
         '';
   };
 }
