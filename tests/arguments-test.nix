@@ -118,39 +118,29 @@
 
         environment.systemPackages = with pkgs; [
           git
-          (pkgs.writeShellScriptBin "make-repo" ''
-            # ${pkgs.coreutils}/bin/cp ${self} /etc/repo -r;
-            ${pkgs.coreutils}/bin/cp ${examplesRepo}/repo /etc/repo -r;
-            cd /etc/repo;
-            ${pkgs.git}/bin/git init;
-            ${pkgs.git}/bin/git config user.email "example@example.com";
-            ${pkgs.git}/bin/git config user.name "test";
-            ${pkgs.git}/bin/git remote add origin file:///etc/repo;
-            ${pkgs.git}/bin/git add .
-            ${pkgs.git}/bin/git commit -m "test";
-          '')
+          wharfix
           (pkgs.writeShellScriptBin "run-wharfix" ''
-            cd /etc/repo/;
             ${pkgs.wharfix}/bin/wharfix \
-              --repo file:///etc/repo \
+              --repo $1 \
               --port 8080 \
               --address 0.0.0.0 \
               --index-file-path default.nix \
               --blob-cache-dir /root/ \
               --add-nix-gcroots \
+              --ssh-private-key $HOME/.ssh/privk \
               --target /tmp/wharfix;
           '')
         ];
-        systemd.services.wharfix = {
-          wantedBy = [ "multi-user.target" ];
-          after = [ "network.target" ];
-          path = [ pkgs.nix ];
-          serviceConfig = {
-            Environment = "RUST_BACKTRACE=1";
-            ExecStartPre = ''/run/current-system/sw/bin/make-repo'';
-            ExecStart = ''/run/current-system/sw/bin/run-wharfix'';
-          };
-        };
+        # systemd.services.wharfix = {
+        #   wantedBy = [ "multi-user.target" ];
+        #   after = [ "network.target" ];
+        #   path = [ pkgs.nix ];
+        #   serviceConfig = {
+        #     Environment = "RUST_BACKTRACE=1";
+        #     ExecStartPre = ''/run/current-system/sw/bin/make-repo'';
+        #     ExecStart = ''/run/current-system/sw/bin/run-wharfix'';
+        #   };
+        # };
 
         networking.firewall.allowedTCPPorts = [ 8080 ];
       };
@@ -167,16 +157,6 @@
       repo_maker = { config, pkgs, ... }: {
         environment.systemPackages = with pkgs; [
           git
-          (pkgs.writeShellScriptBin "make-repo" ''
-            ${pkgs.coreutils}/bin/cp ${examplesRepo}/repo /etc/repo -r;
-            cd /etc/repo;
-            ${pkgs.git}/bin/git init;
-            ${pkgs.git}/bin/git config user.email "example@example.com";
-            ${pkgs.git}/bin/git config user.name "test";
-            ${pkgs.git}/bin/git remote add origin file:///etc/repo;
-            ${pkgs.git}/bin/git add .
-            ${pkgs.git}/bin/git commit -m "test";
-          '')
         ];
         virtualisation.docker.enable = true;
         virtualisation.docker.extraOptions = "--insecure-registry wharfix:8080";
@@ -241,9 +221,6 @@
 
           repo_maker.wait_for_unit("network.target")
 
-          wharfix.wait_for_open_port(8080)
-          wharfix.wait_for_unit("wharfix.service")
-
           client1.succeed("mkdir -p $HOME/.ssh")
           client1.succeed(f"cat {PRIVK} > $HOME/.ssh/privk")
           client1.succeed("chmod 0400 $HOME/.ssh/privk")
@@ -264,11 +241,29 @@
             f"GIT_SSH_COMMAND='{GIT_SSH_COMMAND}' git -C /tmp/examples push origin master"
           )
 
-          # client1.succeed("git -C /tmp/repo init")
-          # client1.succeed("echo hello world > /tmp/repo/testfile")
-          # client1.succeed("git -C /tmp/repo add .")
-          # client1.succeed("git -C /tmp/repo commit -m 'Initial import'")
-          # client1.succeed(f"git -C /tmp/repo remote add origin {REPO}")
+          wharfix.wait_for_unit("network.target")
+
+          wharfix.succeed("mkdir -p $HOME/.ssh")
+          wharfix.succeed(f"cat {PRIVK} > $HOME/.ssh/privk")
+          wharfix.succeed("chmod 0400 $HOME/.ssh/privk")
+          wharfix.succeed("git config --global user.email test@localhost")
+          wharfix.succeed("git config --global user.name test")
+
+          wharfix.execute(
+            "wharfix"
+            + " --repo {REPO}"
+            + " --port 8080"
+            + " --address 0.0.0.0"
+            + " --index-file-path default.nix"
+            + " --blob-cache-dir /root/"
+            + " --add-nix-gcroots"
+            + " --ssh-private-key $HOME/.ssh/privk"
+            + " --target /tmp/wharfix"
+            + ""
+          )
+          # wharfix.wait_for_open_port(8080)
+
+          # wharfix.wait_for_unit("wharfix.service")
 
           client1.succeed("docker pull wharfix:8080/sl:master")
         '';

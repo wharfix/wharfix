@@ -18,5 +18,5 @@ arguments-tests:
     nix build -L --impure --option sandbox false ./#apps.x86_64-linux.arguments-test.program
 
 debug-vm-tests:
-    nix build .#checks.x86_64-linux.default.driverInteractive
+    nix build .#checks.x86_64-linux.arguments-test.driverInteractive
     ./result/bin/nixos-test-driver --interactive
