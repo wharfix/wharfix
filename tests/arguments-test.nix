@@ -111,7 +111,7 @@
       };
 
       # This is the wharfix registry.
-      registry = { config, ... }: {
+      wharfix = { config, ... }: {
         virtualisation.memorySize = 4096;
         virtualisation.diskSize = 100240;
         virtualisation.writableStoreUseTmpfs = false;
@@ -158,24 +158,34 @@
       # This client is the one that's gonna pull down the image from wharfix.
       client1 = { ... }: {
         virtualisation.docker.enable = true;
-        virtualisation.docker.extraOptions = "--insecure-registry registry:8080";
+        virtualisation.docker.extraOptions = "--insecure-registry wharfix:8080";
       };
     };
 
-    testScript = ''
-      start_all()
+    testScript = {nodes, ...}:
+      let
+        inherit (import ./ssh-keys.nix pkgs) snakeOilPrivateKey snakeOilPublicKey;
+        serverSystem = nodes.server.system.build.toplevel;
+        dumpFile = with nodes.server.specialisation.dump.configuration.services.forgejo.dump; "${backupDir}/${file}";
+      in
+        ''
+          start_all()
 
-      server.wait_for_unit("forgejo.service")
-      server.wait_for_open_port(3000)
-      server.wait_for_open_port(22)
-      server.succeed("curl --fail http://localhost:3000/")
+          GIT_SSH_COMMAND = "ssh -i $HOME/.ssh/privk -o StrictHostKeyChecking=no"
+          REPO = "forgejo@server:test/repo"
+          PRIVK = "${snakeOilPrivateKey}"
 
-      client1.wait_for_unit("docker.service")
+          forgejo.wait_for_unit("forgejo.service")
+          forgejo.wait_for_open_port(3000)
+          forgejo.wait_for_open_port(22)
+          forgejo.succeed("curl --fail http://localhost:3000/")
 
-      registry.wait_for_open_port(8080)
-      registry.wait_for_unit("wharfix.service")
+          client1.wait_for_unit("docker.service")
 
-      client1.succeed("docker pull registry:8080/sl:master")
-    '';
+          wharfix.wait_for_open_port(8080)
+          wharfix.wait_for_unit("wharfix.service")
+
+          client1.succeed("docker pull wharfix:8080/sl:master")
+        '';
   };
 }
