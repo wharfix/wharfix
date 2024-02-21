@@ -1,5 +1,6 @@
 alias i := integration-tests
 alias d := debug-vm-tests
+alias a := arguments-tests
 
 non-nix-integration-tests:
     # #!/usr/bin/env fish
@@ -12,6 +13,9 @@ non-nix-integration-tests:
 
 integration-tests:
     nix flake check -L --impure --option sandbox false
+
+arguments-tests:
+    nix build -L --impure --option sandbox false ./#apps.x86_64-linux.arguments-test.program
 
 debug-vm-tests:
     nix build .#checks.x86_64-linux.default.driverInteractive

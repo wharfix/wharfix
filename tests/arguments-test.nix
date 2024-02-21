@@ -156,7 +156,28 @@
       };
 
       # This client is the one that's gonna pull down the image from wharfix.
-      client1 = { ... }: {
+      client1 = { config, pkgs, ... }: {
+        environment.systemPackages = [ pkgs.git ];
+        virtualisation.docker.enable = true;
+        virtualisation.docker.extraOptions = "--insecure-registry wharfix:8080";
+      };
+
+      # This machines sole job is to create the repo for wharfix to use as a
+      # remote.
+      repo_maker = { config, pkgs, ... }: {
+        environment.systemPackages = with pkgs; [
+          git
+          (pkgs.writeShellScriptBin "make-repo" ''
+            ${pkgs.coreutils}/bin/cp ${examplesRepo}/repo /etc/repo -r;
+            cd /etc/repo;
+            ${pkgs.git}/bin/git init;
+            ${pkgs.git}/bin/git config user.email "example@example.com";
+            ${pkgs.git}/bin/git config user.name "test";
+            ${pkgs.git}/bin/git remote add origin file:///etc/repo;
+            ${pkgs.git}/bin/git add .
+            ${pkgs.git}/bin/git commit -m "test";
+          '')
+        ];
         virtualisation.docker.enable = true;
         virtualisation.docker.extraOptions = "--insecure-registry wharfix:8080";
       };
@@ -172,7 +193,7 @@
           start_all()
 
           GIT_SSH_COMMAND = "ssh -i $HOME/.ssh/privk -o StrictHostKeyChecking=no"
-          REPO = "forgejo@server:test/repo"
+          REPO = "forgejo@forgejo:test/examples"
           PRIVK = "${snakeOilPrivateKey}"
 
           forgejo.wait_for_unit("forgejo.service")
@@ -180,10 +201,74 @@
           forgejo.wait_for_open_port(22)
           forgejo.succeed("curl --fail http://localhost:3000/")
 
+          forgejo.succeed(
+              "su -l forgejo -c 'gpg --homedir /var/lib/forgejo/data/home/.gnupg "
+              + "--import ${toString (pkgs.writeText "forgejo.key" signingPrivateKey)}'"
+          )
+
+          assert "BEGIN PGP PUBLIC KEY BLOCK" in forgejo.succeed("curl http://localhost:3000/api/v1/signing-key.gpg")
+
+          forgejo.succeed(
+              "curl --fail http://localhost:3000/user/sign_up | grep 'Registration is disabled. "
+              + "Please contact your site administrator.'"
+          )
+          forgejo.succeed(
+              "su -l forgejo -c 'GITEA_WORK_DIR=/var/lib/forgejo gitea admin user create "
+              + "--username test --password totallysafe --email test@localhost'"
+          )
+
+          api_token = forgejo.succeed(
+              "curl --fail -X POST http://test:totallysafe@localhost:3000/api/v1/users/test/tokens "
+              + "-H 'Accept: application/json' -H 'Content-Type: application/json' -d "
+              + "'{\"name\":\"token\",\"scopes\":[\"all\"]}' | jq '.sha1' | xargs echo -n"
+          )
+
+          forgejo.succeed(
+              "curl --fail -X POST http://localhost:3000/api/v1/user/repos "
+              + "-H 'Accept: application/json' -H 'Content-Type: application/json' "
+              + f"-H 'Authorization: token {api_token}'"
+              + ' -d \'{"auto_init":false, "description":"string", "license":"mit", "name":"examples", "private":false}\'''
+          )
+
+          forgejo.succeed(
+              "curl --fail -X POST http://localhost:3000/api/v1/user/keys "
+              + "-H 'Accept: application/json' -H 'Content-Type: application/json' "
+              + f"-H 'Authorization: token {api_token}'"
+              + ' -d \'{"key":"${snakeOilPublicKey}","read_only":true,"title":"SSH"}\'''
+          )
+
           client1.wait_for_unit("docker.service")
+
+          repo_maker.wait_for_unit("network.target")
 
           wharfix.wait_for_open_port(8080)
           wharfix.wait_for_unit("wharfix.service")
+
+          client1.succeed("mkdir -p $HOME/.ssh")
+          client1.succeed(f"cat {PRIVK} > $HOME/.ssh/privk")
+          client1.succeed("chmod 0400 $HOME/.ssh/privk")
+          client1.succeed("git config --global user.email test@localhost")
+          client1.succeed("git config --global user.name test")
+
+          repo_maker.succeed("mkdir -p $HOME/.ssh")
+          repo_maker.succeed(f"cat {PRIVK} > $HOME/.ssh/privk")
+          repo_maker.succeed("chmod 0400 $HOME/.ssh/privk")
+
+          repo_maker.succeed("git config --global user.email test@localhost")
+          repo_maker.succeed("git config --global user.name test")
+
+          repo_maker.succeed("git clone https://github.com/wharfix/examples.git /tmp/examples")
+          repo_maker.succeed(f"git -C /tmp/examples remote set-url origin {REPO}")
+
+          repo_maker.succeed(
+            f"GIT_SSH_COMMAND='{GIT_SSH_COMMAND}' git -C /tmp/examples push origin master"
+          )
+
+          # client1.succeed("git -C /tmp/repo init")
+          # client1.succeed("echo hello world > /tmp/repo/testfile")
+          # client1.succeed("git -C /tmp/repo add .")
+          # client1.succeed("git -C /tmp/repo commit -m 'Initial import'")
+          # client1.succeed(f"git -C /tmp/repo remote add origin {REPO}")
 
           client1.succeed("docker pull wharfix:8080/sl:master")
         '';
