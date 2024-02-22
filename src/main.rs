@@ -52,6 +52,10 @@ use mysql::{params, Pool, prelude::Queryable};
 
 mod errors;
 
+use std::sync::OnceLock;
+
+static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
+
 static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
@@ -59,7 +63,6 @@ static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
-static mut ADD_NIX_GCROOTS: bool = false;
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
 const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar";
@@ -288,7 +291,7 @@ impl BlobDelivery {
                         }
                     }
                 }
-                if is_gc_rootable && unsafe { ADD_NIX_GCROOTS } {
+                if is_gc_rootable && *ADD_NIX_GCROOTS.get().unwrap() {
                     nix_add_root(&cache_path, &info.path).await.or_else(|e| {
                         log::error(&format!("error caching: {}", &info.name), &e);
                         Err(e)
@@ -527,6 +530,8 @@ fn main() {
 
         let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
 
+        ADD_NIX_GCROOTS.get_or_init(|| m.is_present("addnixgcroots"));
+
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             SERVE_TYPE = serve_type;
@@ -535,7 +540,6 @@ fn main() {
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
             SSH_PRIVATE_KEY = fo;
-            ADD_NIX_GCROOTS = m.is_present("addnixgcroots");
         }
 
         listen(listen_address, listen_port)
