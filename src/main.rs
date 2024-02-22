@@ -57,8 +57,8 @@ use std::sync::OnceLock;
 static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
 static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
 static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
+static TARGET_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 
-static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
@@ -531,9 +531,9 @@ fn main() {
         ADD_NIX_GCROOTS.get_or_init(|| m.is_present("addnixgcroots"));
         INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.is_present("indexfileisbuildable"));
         SERVE_TYPE.get_or_init(|| serve_type);
+        TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
 
         unsafe {
-            TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
@@ -746,7 +746,7 @@ fn file_name_to_content_type(file_name: &Path) -> String {
 fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     use git2::build::RepoBuilder;
 
-    let root_dir = unsafe { TARGET_DIR.as_ref().unwrap() };
+    let root_dir = TARGET_DIR.get().unwrap().as_ref().unwrap();
     let clone_target = root_dir.join(pathname_generator(name, url));
 
     Ok(if clone_target.exists() {
