@@ -58,8 +58,8 @@ static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
 static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
 static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
 static TARGET_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+static BLOB_CACHE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 
-static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
@@ -378,9 +378,7 @@ impl ServeType {
         let serve_type = SERVE_TYPE.get().unwrap().as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))?;
         let name = host;
 
-        let blob_delivery = unsafe {
-            BLOB_CACHE_DIR.as_ref().map(|dir| BlobDelivery::Persistent(dir.clone())).unwrap_or(BlobDelivery::Memory)
-        };
+        let blob_delivery = BLOB_CACHE_DIR.get().unwrap().as_ref().map(|dir| BlobDelivery::Persistent(dir.clone())).unwrap_or(BlobDelivery::Memory);
 
         Ok(match serve_type {
               #[cfg(feature = "mysql")]
@@ -532,9 +530,9 @@ fn main() {
         INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.is_present("indexfileisbuildable"));
         SERVE_TYPE.get_or_init(|| serve_type);
         TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
+        BLOB_CACHE_DIR.get_or_init(|| blob_cache_dir);
 
         unsafe {
-            BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             SSH_PRIVATE_KEY = fo;
