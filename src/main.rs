@@ -55,13 +55,13 @@ mod errors;
 use std::sync::OnceLock;
 
 static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
+static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
 
 static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
-static mut INDEX_FILE_IS_BUILDABLE: bool = false;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
@@ -207,7 +207,7 @@ impl ManifestDelivery {
         let child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
-                if unsafe { INDEX_FILE_IS_BUILDABLE } {
+                if *INDEX_FILE_IS_BUILDABLE.get().unwrap() {
                     cmd
                     .arg(&fq.to_str().unwrap())
                     .arg("-A")
@@ -531,6 +531,7 @@ fn main() {
         let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
 
         ADD_NIX_GCROOTS.get_or_init(|| m.is_present("addnixgcroots"));
+        INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.is_present("indexfileisbuildable"));
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
@@ -538,7 +539,6 @@ fn main() {
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
-            INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
             SSH_PRIVATE_KEY = fo;
         }
 
