@@ -59,8 +59,8 @@ static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
 static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
 static TARGET_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 static BLOB_CACHE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+static SUBSTITUTERS: OnceLock<Option<String>> = OnceLock::new();
 
-static mut SUBSTITUTERS: Option<String> = None;
 static mut INDEX_FILE_PATH: Option<PathBuf> = None;
 static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 
@@ -195,12 +195,10 @@ impl ManifestDelivery {
 
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
-        unsafe {
-            if SUBSTITUTERS.is_some() {
-                cmd.arg("--option");
-                cmd.arg("substituters");
-                cmd.arg(SUBSTITUTERS.as_ref().unwrap());
-            }
+        if SUBSTITUTERS.get().unwrap().is_some() {
+            cmd.arg("--option");
+            cmd.arg("substituters");
+            cmd.arg(SUBSTITUTERS.get().unwrap().as_ref().unwrap());
         }
 
         let mut drv_file = NamedTempFile::new().unwrap();
@@ -531,9 +529,9 @@ fn main() {
         SERVE_TYPE.get_or_init(|| serve_type);
         TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
         BLOB_CACHE_DIR.get_or_init(|| blob_cache_dir);
+        SUBSTITUTERS.get_or_init(|| m.value_of("substituters").map(|s| s.to_string()));
 
         unsafe {
-            SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
             SSH_PRIVATE_KEY = fo;
         }
