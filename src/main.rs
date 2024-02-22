@@ -56,8 +56,8 @@ use std::sync::OnceLock;
 
 static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
 static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
+static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
 
-static mut SERVE_TYPE: Option<ServeType> = None;
 static mut TARGET_DIR: Option<PathBuf> = None;
 static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
 static mut SUBSTITUTERS: Option<String> = None;
@@ -375,9 +375,7 @@ use crate::errors::{DockerError};
 
 impl ServeType {
     fn to_registry(host: &str) -> Result<Registry, DockerError> {
-        let serve_type = unsafe {
-            SERVE_TYPE.as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))
-        }?;
+        let serve_type = SERVE_TYPE.get().unwrap().as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))?;
         let name = host;
 
         let blob_delivery = unsafe {
@@ -532,10 +530,10 @@ fn main() {
 
         ADD_NIX_GCROOTS.get_or_init(|| m.is_present("addnixgcroots"));
         INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.is_present("indexfileisbuildable"));
+        SERVE_TYPE.get_or_init(|| serve_type);
 
         unsafe {
             TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
-            SERVE_TYPE = serve_type;
             BLOB_CACHE_DIR = blob_cache_dir;
             SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
             INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
