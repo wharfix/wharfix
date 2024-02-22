@@ -60,9 +60,9 @@ static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
 static TARGET_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 static BLOB_CACHE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 static SUBSTITUTERS: OnceLock<Option<String>> = OnceLock::new();
+static INDEX_FILE_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+static SSH_PRIVATE_KEY: OnceLock<Option<PathBuf>> = OnceLock::new();
 
-static mut INDEX_FILE_PATH: Option<PathBuf> = None;
-static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
 const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar";
@@ -164,7 +164,7 @@ impl ManifestDelivery {
     async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
-                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
+                let fq: PathBuf = serve_root.join(INDEX_FILE_PATH.get().unwrap().as_ref().map(|i| i.to_str().unwrap()).unwrap());
                 log::data("looking for indexfile at", &fq);
 
                 let mut cmd = Command::new("nix-instantiate");
@@ -204,7 +204,7 @@ impl ManifestDelivery {
         let mut drv_file = NamedTempFile::new().unwrap();
         let child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
-                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
+                let fq: PathBuf = serve_root.join(INDEX_FILE_PATH.get().unwrap().as_ref().map(|i| i.to_str().unwrap()).unwrap());
                 if *INDEX_FILE_IS_BUILDABLE.get().unwrap() {
                     cmd
                     .arg(&fq.to_str().unwrap())
@@ -530,11 +530,8 @@ fn main() {
         TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
         BLOB_CACHE_DIR.get_or_init(|| blob_cache_dir);
         SUBSTITUTERS.get_or_init(|| m.value_of("substituters").map(|s| s.to_string()));
-
-        unsafe {
-            INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
-            SSH_PRIVATE_KEY = fo;
-        }
+        INDEX_FILE_PATH.get_or_init(|| Some(PathBuf::from(m.value_of("indexfilepath").unwrap())));
+        SSH_PRIVATE_KEY.get_or_init(|| fo);
 
         listen(listen_address, listen_port)
             .or_else(|e| Err(MainError::ListenBind(e)))
@@ -778,7 +775,7 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Resu
 fn fetch_options<'l>() -> FetchOptions<'l> {
     let mut fo = FetchOptions::new();
 
-    match unsafe { SSH_PRIVATE_KEY.as_ref() } {
+    match SSH_PRIVATE_KEY.get().unwrap().as_ref() {
         Some(key) => {
             let mut callbacks = RemoteCallbacks::new();
             callbacks.credentials(move |_url, username_from_url, _allowed_types| {
