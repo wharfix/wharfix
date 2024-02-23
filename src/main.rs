@@ -52,14 +52,17 @@ use mysql::{params, Pool, prelude::Queryable};
 
 mod errors;
 
-static mut SERVE_TYPE: Option<ServeType> = None;
-static mut TARGET_DIR: Option<PathBuf> = None;
-static mut BLOB_CACHE_DIR: Option<PathBuf> = None;
-static mut SUBSTITUTERS: Option<String> = None;
-static mut INDEX_FILE_PATH: Option<PathBuf> = None;
-static mut INDEX_FILE_IS_BUILDABLE: bool = false;
-static mut SSH_PRIVATE_KEY: Option<PathBuf> = None;
-static mut ADD_NIX_GCROOTS: bool = false;
+use std::sync::OnceLock;
+
+static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
+static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
+static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
+static TARGET_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+static BLOB_CACHE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+static SUBSTITUTERS: OnceLock<Option<String>> = OnceLock::new();
+static INDEX_FILE_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+static SSH_PRIVATE_KEY: OnceLock<Option<PathBuf>> = OnceLock::new();
+
 
 const CONTENT_TYPE_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
 const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar";
@@ -161,7 +164,7 @@ impl ManifestDelivery {
     async fn index(&self, serve_root: &Path, info: &FetchInfo) -> Result<(), RepoError> {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
-                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
+                let fq: PathBuf = serve_root.join(INDEX_FILE_PATH.get().unwrap().as_ref().map(|i| i.to_str().unwrap()).unwrap());
                 log::data("looking for indexfile at", &fq);
 
                 let mut cmd = Command::new("nix-instantiate");
@@ -192,19 +195,17 @@ impl ManifestDelivery {
 
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
-        unsafe {
-            if SUBSTITUTERS.is_some() {
-                cmd.arg("--option");
-                cmd.arg("substituters");
-                cmd.arg(SUBSTITUTERS.as_ref().unwrap());
-            }
+        if SUBSTITUTERS.get().unwrap().is_some() {
+            cmd.arg("--option");
+            cmd.arg("substituters");
+            cmd.arg(SUBSTITUTERS.get().unwrap().as_ref().unwrap());
         }
 
         let mut drv_file = NamedTempFile::new().unwrap();
         let child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
-                let fq: PathBuf = serve_root.join(unsafe { INDEX_FILE_PATH.as_ref().map(|i| i.to_str().unwrap()).unwrap() });
-                if unsafe { INDEX_FILE_IS_BUILDABLE } {
+                let fq: PathBuf = serve_root.join(INDEX_FILE_PATH.get().unwrap().as_ref().map(|i| i.to_str().unwrap()).unwrap());
+                if *INDEX_FILE_IS_BUILDABLE.get().unwrap() {
                     cmd
                     .arg(&fq.to_str().unwrap())
                     .arg("-A")
@@ -288,7 +289,7 @@ impl BlobDelivery {
                         }
                     }
                 }
-                if is_gc_rootable && unsafe { ADD_NIX_GCROOTS } {
+                if is_gc_rootable && *ADD_NIX_GCROOTS.get().unwrap() {
                     nix_add_root(&cache_path, &info.path).await.or_else(|e| {
                         log::error(&format!("error caching: {}", &info.name), &e);
                         Err(e)
@@ -372,14 +373,10 @@ use crate::errors::{DockerError};
 
 impl ServeType {
     fn to_registry(host: &str) -> Result<Registry, DockerError> {
-        let serve_type = unsafe {
-            SERVE_TYPE.as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))
-        }?;
+        let serve_type = SERVE_TYPE.get().unwrap().as_ref().ok_or(DockerError::snafu("serve type unwrap error, this shouldn't happen :("))?;
         let name = host;
 
-        let blob_delivery = unsafe {
-            BLOB_CACHE_DIR.as_ref().map(|dir| BlobDelivery::Persistent(dir.clone())).unwrap_or(BlobDelivery::Memory)
-        };
+        let blob_delivery = BLOB_CACHE_DIR.get().unwrap().as_ref().map(|dir| BlobDelivery::Persistent(dir.clone())).unwrap_or(BlobDelivery::Memory);
 
         Ok(match serve_type {
               #[cfg(feature = "mysql")]
@@ -527,16 +524,14 @@ fn main() {
 
         let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
 
-        unsafe {
-            TARGET_DIR = Some(fs::canonicalize(target_dir).unwrap());
-            SERVE_TYPE = serve_type;
-            BLOB_CACHE_DIR = blob_cache_dir;
-            SUBSTITUTERS = m.value_of("substituters").map(|s| s.to_string());
-            INDEX_FILE_PATH = Some(PathBuf::from(m.value_of("indexfilepath").unwrap()));
-            INDEX_FILE_IS_BUILDABLE = m.is_present("indexfileisbuildable");
-            SSH_PRIVATE_KEY = fo;
-            ADD_NIX_GCROOTS = m.is_present("addnixgcroots");
-        }
+        ADD_NIX_GCROOTS.get_or_init(|| m.is_present("addnixgcroots"));
+        INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.is_present("indexfileisbuildable"));
+        SERVE_TYPE.get_or_init(|| serve_type);
+        TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
+        BLOB_CACHE_DIR.get_or_init(|| blob_cache_dir);
+        SUBSTITUTERS.get_or_init(|| m.value_of("substituters").map(|s| s.to_string()));
+        INDEX_FILE_PATH.get_or_init(|| Some(PathBuf::from(m.value_of("indexfilepath").unwrap())));
+        SSH_PRIVATE_KEY.get_or_init(|| fo);
 
         listen(listen_address, listen_port)
             .or_else(|e| Err(MainError::ListenBind(e)))
@@ -744,7 +739,7 @@ fn file_name_to_content_type(file_name: &Path) -> String {
 fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     use git2::build::RepoBuilder;
 
-    let root_dir = unsafe { TARGET_DIR.as_ref().unwrap() };
+    let root_dir = TARGET_DIR.get().unwrap().as_ref().unwrap();
     let clone_target = root_dir.join(pathname_generator(name, url));
 
     Ok(if clone_target.exists() {
@@ -780,7 +775,7 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Resu
 fn fetch_options<'l>() -> FetchOptions<'l> {
     let mut fo = FetchOptions::new();
 
-    match unsafe { SSH_PRIVATE_KEY.as_ref() } {
+    match SSH_PRIVATE_KEY.get().unwrap().as_ref() {
         Some(key) => {
             let mut callbacks = RemoteCallbacks::new();
             callbacks.credentials(move |_url, username_from_url, _allowed_types| {

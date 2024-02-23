@@ -3,6 +3,9 @@ name = "wharfix"
 version = "0.1.0"
 edition = "2021"
 
+# We should specify MSRV of 1.70 because we use OnceLock
+rust-version = "1.70.0"
+
 [dependencies]
 clap = "2"
 serde = { version = "1", features = [ "derive" ] }
