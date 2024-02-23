@@ -37,6 +37,17 @@ use regex::Regex;
 use tempfile::NamedTempFile;
 use std::ffi::OsStr;
 
+#[cfg(not(feature = "oldlogs"))]
+#[allow(unused)]
+use log::{debug, error, info, trace, warn};
+
+#[cfg(not(feature = "oldlogs"))]
+extern crate log;
+
+#[cfg(not(feature = "oldlogs"))]
+extern crate pretty_env_logger;
+
+#[cfg(feature = "oldlogs")]
 use dbc_rust_modules::log as dbc_log;
 
 use serde::Deserialize;
@@ -165,6 +176,9 @@ impl ManifestDelivery {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(INDEX_FILE_PATH.get().unwrap().as_ref().map(|i| i.to_str().unwrap()).unwrap());
+                #[cfg(not(feature = "oldlogs"))]
+                info!("looking for indexfile at {:?}", &fq);
+                #[cfg(feature = "oldlogs")]
                 dbc_log::data("looking for indexfile at", &fq);
 
                 let mut cmd = Command::new("nix-instantiate");
@@ -285,12 +299,18 @@ impl BlobDelivery {
                     Ok(_) => {}
                     Err(e) => {
                         if e.kind() != ErrorKind::AlreadyExists {
+                            #[cfg(not(feature = "oldlogs"))]
+                            error!("error caching: {}, {:#?}", &info.name, &e);
+                            #[cfg(feature = "oldlogs")]
                             dbc_log::error(&format!("error caching: {}", &info.name), &e);
                         }
                     }
                 }
                 if is_gc_rootable && *ADD_NIX_GCROOTS.get().unwrap() {
                     nix_add_root(&cache_path, &info.path).await.or_else(|e| {
+                        #[cfg(not(feature = "oldlogs"))]
+                        error!("error caching: {}, {:#?}", &info.name, &e);
+                        #[cfg(feature = "oldlogs")]
                         dbc_log::error(&format!("error caching: {}", &info.name), &e);
                         Err(e)
                     }).unwrap();
@@ -414,7 +434,10 @@ impl FromRequest for Registry {
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
 fn main() {
+    #[cfg(not(feature = "oldlogs"))]
+    pretty_env_logger::init();
 
+    #[cfg(feature = "oldlogs")]
     dbc_log::init(APP_NAME.to_string()).unwrap();
 
     let args = clap::App::new("wharfix")
@@ -537,6 +560,9 @@ fn main() {
             .or_else(|e| Err(MainError::ListenBind(e)))
 
     }() {
+        #[cfg(not(feature = "oldlogs"))]
+        error!("startup error: {:#?}", &e);
+        #[cfg(feature = "oldlogs")]
         dbc_log::error("startup error", &e);
     }
 }
@@ -548,6 +574,10 @@ fn db_connect(creds_file: PathBuf) -> Pool {
 
 #[actix_rt::main]
 async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>{
+    #[cfg(not(feature = "oldlogs"))]
+    info!("start listening on port: {}", listen_port);
+
+    #[cfg(feature = "oldlogs")]
     dbc_log::info(&format!("start listening on port: {}", listen_port));
 
     let manifest_url = "/v2/{name}/manifests/{reference}";
@@ -556,8 +586,14 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
     HttpServer::new(move || {
         App::new()
             .wrap_fn(|req, srv| {
+                #[cfg(feature = "oldlogs")]
                 dbc_log::new_session();
                 let host = req.headers().get("HOST").and_then(|hv| hv.to_str().ok()).unwrap_or("");
+
+                #[cfg(not(feature = "oldlogs"))]
+                info!("request: {}", &json!({ "endpoint": format!("{}", req.path()), "host": host }));
+
+                #[cfg(feature = "oldlogs")]
                 dbc_log::data("request", &json!({ "endpoint": format!("{}", req.path()), "host": host }));
                 srv.call(req)
             })
@@ -652,6 +688,10 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                 true => path.join("manifest.json"),
                 false => path.clone()
             };
+            #[cfg(not(feature = "oldlogs"))]
+            info!("serving manifest from path: {:?}", &fq);
+
+            #[cfg(feature = "oldlogs")]
             dbc_log::info(&format!("serving manifest from path: {:?}", &fq));
             match fs::read_to_string(&fq) {
                 Ok(manifest_str) => {
@@ -669,6 +709,10 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                     Ok(WharfixManifest::new(manifest_str, fq))
                 },
                 Err(e) => {
+                    #[cfg(not(feature = "oldlogs"))]
+                    error!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference);
+
+                    #[cfg(feature = "oldlogs")]
                     dbc_log::error(&format!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference), &e);
                     Err(e.manifest_context(&info))
                 }
@@ -720,6 +764,10 @@ async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixB
             })
         },
         Err(e) => {
+            #[cfg(not(feature = "oldlogs"))]
+            error!("failed to read blob: {digest}", digest=&info.reference);
+
+            #[cfg(feature = "oldlogs")]
             dbc_log::error(&format!("failed to read blob: {digest}", digest=&info.reference), &e);
             Err(e)
         }
@@ -745,7 +793,12 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     Ok(if clone_target.exists() {
         Repository::open_bare(&clone_target).or_else(|e| Err(RepoError::Git(e)))
     } else {
+        #[cfg(not(feature = "oldlogs"))]
+        info!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target);
+
+        #[cfg(feature = "oldlogs")]
         dbc_log::info(&format!("registry, url: {}, {} - does not exist, initing at: {:?}", &name, &url, &clone_target));
+
         let mut init_opts = RepositoryInitOptions::new();
         init_opts.bare(true);
         init_opts.no_reinit(true);
