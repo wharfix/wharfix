@@ -77,6 +77,7 @@
 
     checks."x86_64-linux" = {
       default = self.apps."x86_64-linux".oom-test;
+      ref = pkgs.callPackage ./tests/ref.nix {};
     };
   };
 }
