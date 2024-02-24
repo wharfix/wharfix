@@ -58,11 +58,10 @@
     apps."x86_64-linux" = {
       oom-test =
         let
-          inherit pkgs;
-          inherit nixpkgs;
+          inherit pkgs nixpkgs;
           wharfix = self.packages.default;
         in
-          (import ./tests/oom-test.nix { inherit self; inherit pkgs; inherit nixpkgs; }).default;
+          (import ./tests/oom-test.nix { inherit self pkgs nixpkgs; }).default;
     };
 
     devShell.${system} = with pkgs; mkShell {
