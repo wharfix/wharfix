@@ -5,9 +5,10 @@
     crane.url = "github:ipetkov/crane";
     crane.inputs.nixpkgs.follows = "nixpkgs";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    wharfixNonStreaming.url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
   };
 
-  outputs = { self, crane, nixpkgs }:
+  outputs = { self, crane, nixpkgs, wharfixNonStreaming }:
   let
     pname = "wharfix";
     system = "x86_64-linux";
@@ -67,7 +68,11 @@
     };
 
     checks."x86_64-linux" = {
-      oom = pkgs.callPackage ./tests/oom.nix {};
+      oom-positive = pkgs.callPackage ./tests/oom.nix {};
+      oom-negative = pkgs.callPackage ./tests/oom.nix {
+        expectedResult = "fail";
+        wharfix = wharfixNonStreaming.defaultPackage.x86_64-linux;
+      };
       ref = pkgs.callPackage ./tests/ref.nix {};
     };
   };
