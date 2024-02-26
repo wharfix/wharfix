@@ -55,15 +55,6 @@
     in
       lib.mapAttrs cratePackage outputPackages;
 
-    apps."x86_64-linux" = {
-      oom-test =
-        let
-          inherit pkgs nixpkgs;
-          wharfix = self.packages.default;
-        in
-          (import ./tests/oom-test.nix { inherit self pkgs nixpkgs; }).default;
-    };
-
     devShell.${system} = with pkgs; mkShell {
       inputsFrom = [ self.defaultPackage.${system} ];
       nativeBuildInputs = [
@@ -76,7 +67,7 @@
     };
 
     checks."x86_64-linux" = {
-      default = self.apps."x86_64-linux".oom-test;
+      oom = pkgs.callPackage ./tests/oom.nix {};
       ref = pkgs.callPackage ./tests/ref.nix {};
     };
   };

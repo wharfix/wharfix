@@ -1,9 +1,12 @@
 {
-  self,
-  nixpkgs ? builtins.fetchTarball "https://github.com/nixOS/nixpkgs/archive/22.05.tar.gz",
-  pkgs ? import nixpkgs {},
-} : rec {
-  repo = pkgs.runCommandNoCC "repo" { nativeBuildInputs = [pkgs.git]; } ''
+  git,
+  nix,
+  nixosTest,
+  runCommandNoCC,
+  wharfix
+}:
+let
+  repo = runCommandNoCC "repo" { nativeBuildInputs = [git]; } ''
     mkdir -p $out
     pushd $out
     git init
@@ -13,7 +16,7 @@
     git config user.name "test";
     git commit -m "Initial commit"
   '';
-  registryNode = package: {
+  registryNode = package: nixpkgsPath: { # TODO: do something cooler than nixpkgsPath
     virtualisation.memorySize = 4096;
     virtualisation.diskSize = 100240;
     virtualisation.writableStoreUseTmpfs = false;
@@ -23,14 +26,14 @@
     # not the vms in reboot loops
     boot.kernel.sysctl."vm.panic_on_oom" = 0;
 
-    environment.systemPackages = with pkgs; [
+    environment.systemPackages = [
       git
     ];
     systemd.services.wharfix = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
-      path = [ pkgs.nix ];
-      environment.NIX_PATH = "nixpkgs=${pkgs.path}";
+      path = [ nix ];
+      environment.NIX_PATH = "nixpkgs=${nixpkgsPath}";
       serviceConfig = {
         Slice = "wharfix.slice";
         MemoryAccounting = true;
@@ -46,17 +49,16 @@
     (builtins.getFlake
     "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08")
     .defaultPackage.x86_64-linux;
-  type = "app";
-  default = program;
-  program = pkgs.nixosTest {
+in
+nixosTest {
     name = "oom-test";
 
     nodes = {
-      registry1 = { ... }:
-        registryNode pkgs.wharfix;
+      registry1 = { pkgs, ... }:
+        registryNode wharfix pkgs.path;
 
-      registry2 = { ... }:
-        registryNode nonSteamingWharfix;
+      registry2 = { pkgs, ... }:
+        registryNode nonSteamingWharfix pkgs.path;
 
       client1 = { ... }: {
         virtualisation.diskSize = 40240;
@@ -85,5 +87,4 @@
           client1.succeed("docker pull registry1:8080/kubernetes:master")
           client2.fail("docker pull registry2:8080/kubernetes:master")
         '';
-  };
 }
