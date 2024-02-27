@@ -20,6 +20,11 @@ nixosTest {
 
   nodes = {
     registry = { pkgs, ... }: {
+
+      imports = [
+        ./res/registry-base.nix
+      ];
+
       environment.systemPackages = [ 
         git
       ];

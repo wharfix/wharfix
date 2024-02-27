@@ -23,6 +23,11 @@ nixosTest {
 
     nodes = {
       registry = { pkgs, ... }: {
+
+        imports = [
+          ./res/registry-base.nix
+        ];
+
         virtualisation.memorySize = 4096;
         virtualisation.diskSize = 100240;
         virtualisation.writableStoreUseTmpfs = false;

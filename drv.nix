@@ -1,7 +1,7 @@
-{ indexFile }:
+{ indexFile }: # arg should probably be renamed to "index", but that change would be breaking
 let
-  _index = import indexFile;
-  index = if builtins.isFunction _index then _index {} else _index;
+  _index = if builtins.isPath indexFile then import indexFile else indexFile; # indexFile can now be both a file or an expression
+  index = if builtins.isFunction _index then _index {} else _index; # expression can be either a function that returns a set or just a set
   pkgs = index.pkgs or (import <nixpkgs> {});
   drv = spec: pkgs.runCommand "${spec.name}-servable" { buildInputs = [pkgs.jq]; } ''
     mkdir -p $out/raw $out/blobs
