@@ -11,7 +11,7 @@ non-nix-integration-tests:
     @echo "if you saw a train then wharfix is working as expected :)"
 
 integration-tests:
-    nix flake check -L --impure --option sandbox false
+    nix flake check
 
 debug-vm-tests:
     nix build .#checks.x86_64-linux.default.driverInteractive
