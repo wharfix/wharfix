@@ -1,22 +1,26 @@
-
-use std::boxed::Box;
 use crate::FetchInfo;
+use std::boxed::Box;
 
-use serde::Serialize;
-use serde_json::json;
-use actix_web::HttpResponse;
 use actix_web::body::BoxBody;
 use actix_web::http::StatusCode;
+use actix_web::HttpResponse;
 use actix_web::ResponseError;
+use serde::Serialize;
+use serde_json::json;
 
 use async_process::ExitStatus;
 
-use crate::log;
+#[cfg(not(feature = "oldlogs"))]
+#[allow(unused)]
+use log::{debug, error, info, trace, warn};
+
+#[cfg(feature = "oldlogs")]
+use dbc_rust_modules::log as dbc_log;
 
 #[allow(dead_code)]
 pub enum ImageBuildError {
     NotFound,
-    Other
+    Other,
 }
 
 #[derive(Debug)]
@@ -51,7 +55,7 @@ pub enum DockerErrorCode {
     #[serde(rename = "NAME_INVALID")]
     NameInvalid,
     #[serde(rename = "SNAFU")]
-    Snafu
+    Snafu,
 }
 
 #[derive(Debug, Serialize)]
@@ -64,7 +68,6 @@ pub struct DockerError {
 pub trait DockerErrorContext {
     fn manifest_context(self, info: &FetchInfo) -> DockerError;
     fn blob_context(self, info: &FetchInfo) -> DockerError;
-
 }
 
 pub trait DockerErrorDetails {
@@ -105,12 +108,23 @@ impl DockerErrorDetails for RepoError {
                     let msg = e.message();
                     format!("git2 error: {code:?}. Message: {msg}")
                 }
+            },
+            RepoError::IndexFile(_) => {
+                "failed to read repository index file: /default.nix".to_string()
             }
-            RepoError::IndexFile(_) => "failed to read repository index file: /default.nix".to_string(),
-            RepoError::IndexAttributeNotFound => format!("attribute: {} not found in repository index: /default.nix", &info.name),
-            RepoError::ImageNotFound => format!("image with name: {} and reference: {} not found", &info.reference, &info.name),
-            RepoError::BlobNotFound => format!("blob: {} not found for image: {}", &info.reference, &info.name),
-            _ => "unknown error".to_string()
+            RepoError::IndexAttributeNotFound => format!(
+                "attribute: {} not found in repository index: /default.nix",
+                &info.name
+            ),
+            RepoError::ImageNotFound => format!(
+                "image with name: {} and reference: {} not found",
+                &info.reference, &info.name
+            ),
+            RepoError::BlobNotFound => format!(
+                "blob: {} not found for image: {}",
+                &info.reference, &info.name
+            ),
+            _ => "unknown error".to_string(),
         }
     }
     fn docker_details(&self) -> String {
@@ -118,8 +132,10 @@ impl DockerErrorDetails for RepoError {
     }
 }
 
-
-impl<T> DockerErrorContext for T where T: DockerErrorDetails {
+impl<T> DockerErrorContext for T
+where
+    T: DockerErrorDetails,
+{
     fn manifest_context(self, info: &FetchInfo) -> DockerError {
         self.to_docker_error(info, DockerErrorCode::ManifestUnknown)
     }
@@ -135,29 +151,32 @@ impl DockerError {
         DockerError {
             code: DockerErrorCode::NameUnknown,
             details: message.clone(),
-            message
+            message,
         }
     }
     pub fn blob_unknown(digest: &str) -> Self {
         DockerError {
             code: DockerErrorCode::BlobUnknown,
             message: "blob unknown to registry".to_string(),
-            details: (json!({ "digest": digest })).to_string()
+            details: (json!({ "digest": digest })).to_string(),
         }
     }
     pub fn snafu(text: &str) -> Self {
         DockerError {
             code: DockerErrorCode::Snafu,
             message: text.to_string(),
-            details: text.to_string()
+            details: text.to_string(),
         }
     }
     pub fn unknown<E: std::fmt::Debug>(text: &str, err: E) -> Self {
-        log::error(text, &err);
+        #[cfg(not(feature = "oldlogs"))]
+        error!("{}: {:#?}", text, &err);
+        #[cfg(feature = "oldlogs")]
+        dbc_log::error(text, &err);
         DockerError {
             code: DockerErrorCode::Snafu,
             message: text.to_string(),
-            details: text.to_string()
+            details: text.to_string(),
         }
     }
     #[cfg(feature = "mysql")]
@@ -166,7 +185,7 @@ impl DockerError {
         DockerError {
             code: DockerErrorCode::NameInvalid,
             details: message.clone(),
-            message
+            message,
         }
     }
 }
@@ -183,7 +202,7 @@ impl ResponseError for DockerError {
     }
 
     fn error_response(&self) -> HttpResponse<BoxBody> {
-        let errors = vec!(self);
+        let errors = vec![self];
         let errors = json!({ "errors": errors });
         HttpResponse::NotFound()
             .append_header(("Docker-Distribution-API-Version", "registry/2.0"))
