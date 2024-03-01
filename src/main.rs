@@ -62,6 +62,7 @@ use async_stream::stream;
 use mysql::{params, Pool, prelude::Queryable};
 
 mod errors;
+mod cli;
 
 use std::sync::OnceLock;
 
@@ -440,69 +441,7 @@ fn main() {
     #[cfg(feature = "oldlogs")]
     dbc_log::init(APP_NAME.to_string()).unwrap();
 
-    let args = clap::App::new("wharfix")
-    .arg(clap::Arg::with_name("path")
-        .long("path")
-        .help("Path to directory of static docker image specs")
-        .takes_value(true)
-        .required_unless_one(&["repo", "dbconnfile", "derivationoutput"]))
-    .arg(clap::Arg::with_name("repo")
-        .long("repo")
-        .help("URL to git repository")
-        .takes_value(true)
-        .required_unless_one(&["path", "dbconnfile", "derivationoutput"]))
-    .arg(clap::Arg::with_name("derivationoutput")
-        .long("derivation-output")
-        .help("Output which servable derivations need to produce to be valid")
-        .takes_value(true)
-        .required_unless_one(&["path", "repo", "dbconnfile"]))
-    .arg(clap::Arg::with_name("target")
-        .long("target")
-        .help("Target path in which to checkout repos")
-        .default_value("/tmp/wharfix")
-        .required(false))
-    .arg(clap::Arg::with_name("blobcachedir")
-        .long("blob-cache-dir")
-        .help("Directory in which to store persitent symlinks to docker layer blobs")
-        .takes_value(true)
-        .required(false))
-    .arg(clap::Arg::with_name("substituters")
-        .long("substituters")
-        .help("Comma-separated list of nix substituters to pass directly to nix-build as 'substituters'")
-        .takes_value(true)
-        .required(false))
-    .arg(clap::Arg::with_name("indexfilepath")
-        .long("index-file-path")
-        .help("Path to repository index file")
-        .default_value("default.nix")
-        .takes_value(true)
-        .required(false))
-    .arg(clap::Arg::with_name("indexfileisbuildable")
-        .long("index-file-is-buildable")
-        .help("Set if the provided index-file is a valid nix entrypoint by itself (i.e. don't use internal drv-wrapper)")
-        .takes_value(false)
-        .required(false))
-    .arg(clap::Arg::with_name("sshprivatekey")
-        .long("ssh-private-key")
-        .help("Path to optional ssh private key file")
-        .takes_value(true)
-        .required(false))
-    .arg(clap::Arg::with_name("addnixgcroots")
-        .long("add-nix-gcroots")
-        .help("Whether to add nix gcroots for blobs cached in blob cache dir")
-        .takes_value(false)
-        .required(false)
-        .requires("blobcachedir"))
-    .arg(clap::Arg::with_name("address")
-        .long("address")
-        .help("Listen address to open on <port>")
-        .default_value("0.0.0.0")
-        .required(false))
-    .arg(clap::Arg::with_name("port")
-        .long("port")
-        .help("Listen port to open on <address>")
-        .default_value("8088")
-        .required(true));
+
 
     #[cfg(feature = "mysql")]
     let args = args.arg(clap::Arg::with_name("dbconnfile")
@@ -513,13 +452,13 @@ fn main() {
 
     if let Err(e) = || -> Result<(), MainError> {
 
-        let m = args.get_matches();
-        let listen_address = m.value_of("address").unwrap().to_string();
-        let listen_port: u16 = m.value_of("port")
+        let m = cli::build_cli().get_matches();
+        let listen_address = m.get_one::<String>("address").unwrap().to_string();
+        let listen_port: u16 = m.get_one::<String>("port")
             .ok_or(MainError::ArgParse("Missing cmdline arg 'port'"))?.parse()
             .or(Err(MainError::ArgParse("cmdline arg 'port' doesn't look like a port number")))?;
 
-        let target_dir = PathBuf::from_str(m.value_of("target").unwrap()).unwrap();
+        let target_dir = PathBuf::from_str(m.get_one::<String>("target").unwrap()).unwrap();
         fs::create_dir(&target_dir).or_else(|e| -> Result<(), std::io::Error> {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => Ok(()),
@@ -528,32 +467,32 @@ fn main() {
         }).unwrap();
 
         let serve_type = Some(match &m {
-           m if m.is_present("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.value_of("path").unwrap()).unwrap().as_path())
+           m if m.contains_id("path") => ServeType::Path(fs::canonicalize(PathBuf::from_str(m.get_one::<String>("path").unwrap()).unwrap().as_path())
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
-           m if m.is_present("repo") => ServeType::Repo(m.value_of("repo").unwrap().to_string()),
+           m if m.contains_id("repo") => ServeType::Repo(m.get_one::<String>("repo").unwrap().to_string()),
            #[cfg(feature = "mysql")]
            m if m.is_present("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.value_of("dbconnfile").unwrap()).unwrap())),
-           m if m.is_present("derivationoutput") => ServeType::Derivation(m.value_of("derivationoutput").unwrap().to_string()),
+           m if m.contains_id("derivationoutput") => ServeType::Derivation(m.get_one::<String>("derivationoutput").unwrap().to_string()),
            _ => panic!("clap should ensure this never happens")
         });
 
         let blob_cache_dir = {
-            if m.is_present("blobcachedir") {
-                Some(fs::canonicalize(m.value_of("blobcachedir").unwrap()).unwrap())
+            if m.contains_id("blobcachedir") {
+                Some(fs::canonicalize(m.get_one::<String>("blobcachedir").unwrap()).unwrap())
             } else {
                 None
             }
         };
 
-        let fo = m.value_of("sshprivatekey").map(|p| PathBuf::from(p));
+        let fo = m.get_one::<String>("sshprivatekey").map(|p| PathBuf::from(p));
 
-        ADD_NIX_GCROOTS.get_or_init(|| m.is_present("addnixgcroots"));
-        INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.is_present("indexfileisbuildable"));
+        ADD_NIX_GCROOTS.get_or_init(|| m.get_flag("addnixgcroots"));
+        INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.get_flag("indexfileisbuildable"));
         SERVE_TYPE.get_or_init(|| serve_type);
         TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
         BLOB_CACHE_DIR.get_or_init(|| blob_cache_dir);
-        SUBSTITUTERS.get_or_init(|| m.value_of("substituters").map(|s| s.to_string()));
-        INDEX_FILE_PATH.get_or_init(|| Some(PathBuf::from(m.value_of("indexfilepath").unwrap())));
+        SUBSTITUTERS.get_or_init(|| m.get_one::<String>("substituters").map(|s| s.to_string()));
+        INDEX_FILE_PATH.get_or_init(|| Some(PathBuf::from(m.get_one::<String>("indexfilepath").unwrap())));
         SSH_PRIVATE_KEY.get_or_init(|| fo);
 
         listen(listen_address, listen_port)
