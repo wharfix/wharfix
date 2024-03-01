@@ -18,5 +18,9 @@
       gunzip -c ${pinnedSrc} > $out/etc/src.tar
     '') ];  
   };
+  nyancat = {
+    name = "nyancat";
+    config.EntryPoint = [ "${pkgs.nyancat}/bin/nyancat" ];
+  };
   inherit pkgs;
 }
