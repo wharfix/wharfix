@@ -50,7 +50,7 @@ nixosTest {
             Slice = "wharfix.slice";
             MemoryAccounting = true;
             MemoryMax = "256M";
-            Environment = "RUST_BACKTRACE=1";
+            Environment = "RUST_BACKTRACE=full";
             ExecStart = ''
               ${wharfix}/bin/wharfix \
                 --repo ${repo} \
@@ -71,7 +71,7 @@ nixosTest {
             Slice = "wharfix.slice";
             MemoryAccounting = true;
             MemoryMax = "256M";
-            Environment = "RUST_BACKTRACE=1";
+            Environment = "RUST_BACKTRACE=full";
             ExecStart = ''
               ${wharfix}/bin/wharfix \
                 --path ${repo} \
