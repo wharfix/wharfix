@@ -1,5 +1,6 @@
 alias i := integration-tests
 alias d := debug-vm-tests
+alias da := debug-vm-tests-arguments
 
 non-nix-integration-tests:
     # #!/usr/bin/env fish
@@ -15,4 +16,8 @@ integration-tests:
 
 debug-vm-tests:
     nix build .#checks.x86_64-linux.default.driverInteractive
+    ./result/bin/nixos-test-driver --interactive
+
+debug-vm-tests-arguments:
+    nix build .#checks.x86_64-linux.arguments.driverInteractive
     ./result/bin/nixos-test-driver --interactive

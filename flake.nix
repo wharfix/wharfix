@@ -74,6 +74,7 @@
         wharfix = wharfixNonStreaming.defaultPackage.x86_64-linux;
       };
       ref = pkgs.callPackage ./tests/ref.nix {};
+      arguments = pkgs.callPackage ./tests/arguments.nix {};
     };
   };
 }
