@@ -5,13 +5,13 @@
     crane.url = "github:ipetkov/crane";
     crane.inputs.nixpkgs.follows = "nixpkgs";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    utils.url = "github:numtide/flake-utils";
     wharfixNonStreaming.url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
   };
 
-  outputs = { self, crane, nixpkgs, wharfixNonStreaming }:
+  outputs = { self, crane, nixpkgs, utils, wharfixNonStreaming }:
   let
     pname = "wharfix";
-    system = "x86_64-linux";
     crane-overlay = final: prev: {
       # crane's lib is not exposed as an overlay in its flake (should be added
       # upstream ideally) so this interface might be brittle, but avoids
@@ -19,19 +19,21 @@
       # on to consumers.
       craneLib = crane.mkLib prev;
     };
-    pkgs = import nixpkgs {
-      inherit system;
-      overlays = [ self.overlay crane-overlay ];
-    };
     lib = nixpkgs.lib;
 
     outputPackages = {
       "${pname}" = [];
       "${pname}-mysql" = ["mysql"];
     };
+  in utils.lib.eachDefaultSystem (system:
+  let
+    pkgs = import nixpkgs {
+      inherit system;
+      overlays = [ self.overlay.${system} crane-overlay ];
+    };
   in {
-    packages.${system} = lib.mapAttrs (n: _: pkgs.${n}) outputPackages;
-    defaultPackage.${system} = pkgs.${pname};
+    packages = lib.mapAttrs (n: _: pkgs.${n}) outputPackages;
+    defaultPackage = pkgs.${pname};
     overlay = final: prev:
     let
       cratePackage = name: features:
@@ -56,7 +58,7 @@
     in
       lib.mapAttrs cratePackage outputPackages;
 
-    devShell.${system} = with pkgs; mkShell {
+    devShell = with pkgs; mkShell {
       inputsFrom = [ self.defaultPackage.${system} ];
       nativeBuildInputs = [
         cargo
@@ -67,7 +69,7 @@
       ];
     };
 
-    checks."x86_64-linux" = {
+    checks = {
       oom-positive = pkgs.callPackage ./tests/oom.nix {};
       oom-negative = pkgs.callPackage ./tests/oom.nix {
         expectedResult = "fail";
@@ -76,5 +78,5 @@
       ref = pkgs.callPackage ./tests/ref.nix {};
       arguments = pkgs.callPackage ./tests/arguments.nix {};
     };
-  };
+  });
 }
