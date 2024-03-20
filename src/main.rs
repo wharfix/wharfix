@@ -441,15 +441,6 @@ fn main() {
     #[cfg(feature = "oldlogs")]
     dbc_log::init(APP_NAME.to_string()).unwrap();
 
-
-
-    #[cfg(feature = "mysql")]
-    let args = args.arg(clap::Arg::with_name("dbconnfile")
-        .long("dbconnfile")
-        .help("Path to file from which to read db connection details")
-        .takes_value(true)
-        .required_unless_one(&["path", "repo", "derivationoutput"]));
-
     if let Err(e) = || -> Result<(), MainError> {
 
         let m = cli::build_cli().get_matches();
@@ -471,7 +462,7 @@ fn main() {
                .or(Err(MainError::ArgParse("cmdline arg 'path' doesn't look like an actual path")))?),
            m if m.contains_id("repo") => ServeType::Repo(m.get_one::<String>("repo").unwrap().to_string()),
            #[cfg(feature = "mysql")]
-           m if m.is_present("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.value_of("dbconnfile").unwrap()).unwrap())),
+           m if m.contains_id("dbconnfile") => ServeType::Database(db_connect(PathBuf::from_str(m.get_one::<String>("dbconnfile").unwrap()).unwrap())),
            m if m.contains_id("derivationoutput") => ServeType::Derivation(m.get_one::<String>("derivationoutput").unwrap().to_string()),
            _ => panic!("clap should ensure this never happens")
         });
