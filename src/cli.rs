@@ -1,17 +1,16 @@
 use clap::{arg, command, crate_authors, Command};
 
 pub fn build_cli() -> Command {
-    command!()
+    let cmd = command!()
         .author(crate_authors!("\n"))
         .arg(
             arg!(--path <PATH> "Path to directory of static docker image specs.")
-                .required_unless_present_any(["repo", "dbconnfile", "derivationoutput"]),
+                .required_unless_present_any(["repo", "derivationoutput"]),
         )
         .arg(
             arg!(--repo <REPO> "URL to git repository.")
                 .required_unless_present_any([
                 "path",
-                "dbconnfile",
                 "derivationoutput",
             ]),
         )
@@ -21,7 +20,6 @@ pub fn build_cli() -> Command {
                 .required(false)
                 .required_unless_present_any([
                     "path",
-                    "dbconnfile",
                     "repo",
                 ]),
         )
@@ -72,13 +70,17 @@ pub fn build_cli() -> Command {
             arg!(--port <PORT> "Listen port to open on <address>.")
                 .required(true)
                 .default_value("8088")
-        )
-        .arg(
+        );
+
+        #[cfg(feature = "mysql")]
+        let cmd = cmd.arg(
             arg!(--dbconnfile <DBCONNFILE> "Path to file from which to read db connection details.")
                 .required_unless_present_any([
                     "path",
                     "repo",
                     "derivationoutput",
                 ]),
-        )
+        );
+        #[cfg(not(feature = "oldlogs"))]
+        cmd
 }
