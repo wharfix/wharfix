@@ -81,6 +81,5 @@ pub fn build_cli() -> Command {
                     "derivationoutput",
                 ]),
         );
-        #[cfg(not(feature = "oldlogs"))]
         cmd
 }
