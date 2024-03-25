@@ -5,12 +5,19 @@ pub fn build_cli() -> Command {
         .author(crate_authors!("\n"))
         .arg(
             arg!(--path <PATH> "Path to directory of static docker image specs.")
-                .required_unless_present_any(["repo", "derivationoutput"]),
+                .required_unless_present_any([
+                    "repo",
+                    #[cfg(feature = "mysql")]
+                    "dbconnfile",
+                    "derivationoutput",
+                ]),
         )
         .arg(
             arg!(--repo <REPO> "URL to git repository.")
                 .required_unless_present_any([
                 "path",
+                #[cfg(feature = "mysql")]
+                "dbconnfile",
                 "derivationoutput",
             ]),
         )
@@ -20,6 +27,8 @@ pub fn build_cli() -> Command {
                 .required(false)
                 .required_unless_present_any([
                     "path",
+                    #[cfg(feature = "mysql")]
+                    "dbconnfile",
                     "repo",
                 ]),
         )
