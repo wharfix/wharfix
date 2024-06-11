@@ -4,7 +4,7 @@
   inputs = {
     crane.url = "github:ipetkov/crane";
     crane.inputs.nixpkgs.follows = "nixpkgs";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
     wharfixNonStreaming.url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
   };
 
