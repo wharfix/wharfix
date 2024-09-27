@@ -2,10 +2,21 @@
   description = "wharfix";
 
   inputs = {
-    crane.url = "github:ipetkov/crane";
-    crane.inputs.nixpkgs.follows = "nixpkgs";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
-    wharfixNonStreaming.url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
+
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # Exists for testing
+    wharfixNonStreaming = {
+      url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        crane.follows = "crane";
+      };
+    };
   };
 
   outputs = { self, crane, nixpkgs, wharfixNonStreaming }:
