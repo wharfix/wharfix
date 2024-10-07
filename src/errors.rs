@@ -10,12 +10,8 @@ use serde_json::json;
 
 use async_process::ExitStatus;
 
-#[cfg(not(feature = "oldlogs"))]
 #[allow(unused)]
 use log::{debug, error, info, trace, warn};
-
-#[cfg(feature = "oldlogs")]
-use dbc_rust_modules::log as dbc_log;
 
 #[allow(dead_code)]
 pub enum ImageBuildError {
@@ -169,10 +165,7 @@ impl DockerError {
         }
     }
     pub fn unknown<E: std::fmt::Debug>(text: &str, err: E) -> Self {
-        #[cfg(not(feature = "oldlogs"))]
         error!("{}: {:#?}", text, &err);
-        #[cfg(feature = "oldlogs")]
-        dbc_log::error(text, &err);
         DockerError {
             code: DockerErrorCode::Snafu,
             message: text.to_string(),
