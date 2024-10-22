@@ -12,7 +12,6 @@ actix-web = "4"
 async-process = "1"
 async-stream = "0.3.5"
 clap = { version = "=4.4", features = ["cargo"] }
-dbc-rust-modules = { git = "https://github.com/dbcdk/rust-modules", branch = "main", features = ["log"], default-features = false }
 erased-serde = "0.4"
 futures = "0.3"
 get_chunk = { version = "1.2.0", features = ["stream", "size_format"] }
@@ -34,4 +33,3 @@ walkdir = "2"
 
 [features]
 mysql = ["dep:mysql"]
-oldlogs = []
