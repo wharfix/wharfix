@@ -37,9 +37,6 @@ use regex::Regex;
 use tempfile::NamedTempFile;
 use std::ffi::OsStr;
 
-#[allow(unused)]
-use log::{debug, error, info, trace, warn};
-
 extern crate log;
 extern crate pretty_env_logger;
 
@@ -170,7 +167,7 @@ impl ManifestDelivery {
         match self {
             ManifestDelivery::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(INDEX_FILE_PATH.get().unwrap().as_ref().map(|i| i.to_str().unwrap()).unwrap());
-                info!("looking for indexfile at {:?}", &fq);
+                log::info!("looking for indexfile at {:?}", &fq);
 
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
@@ -290,13 +287,13 @@ impl BlobDelivery {
                     Ok(_) => {}
                     Err(e) => {
                         if e.kind() != ErrorKind::AlreadyExists {
-                            error!("error caching: {}, {:#?}", &info.name, &e);
+                            log::error!("error caching: {}, {:#?}", &info.name, &e);
                         }
                     }
                 }
                 if is_gc_rootable && *ADD_NIX_GCROOTS.get().unwrap() {
                     nix_add_root(&cache_path, &info.path).await.or_else(|e| {
-                        error!("error caching: {}, {:#?}", &info.name, &e);
+                        log::error!("error caching: {}, {:#?}", &info.name, &e);
                         Err(e)
                     }).unwrap();
                 }
@@ -416,8 +413,6 @@ impl FromRequest for Registry {
     }
 }
 
-const APP_NAME: &str = env!("CARGO_PKG_NAME");
-
 fn main() {
     pretty_env_logger::init();
 
@@ -470,7 +465,7 @@ fn main() {
             .or_else(|e| Err(MainError::ListenBind(e)))
 
     }() {
-        error!("startup error: {:#?}", &e);
+        log::error!("startup error: {:#?}", &e);
     }
 }
 
@@ -481,7 +476,7 @@ fn db_connect(creds_file: PathBuf) -> Pool {
 
 #[actix_rt::main]
 async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>{
-    info!("start listening on port: {}", listen_port);
+    log::info!("start listening on port: {}", listen_port);
 
     let manifest_url = "/v2/{name}/manifests/{reference}";
     let blob_url = "/v2/{name}/blobs/{reference}";
@@ -491,7 +486,7 @@ async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()>
             .wrap_fn(|req, srv| {
                 let host = req.headers().get("HOST").and_then(|hv| hv.to_str().ok()).unwrap_or("");
 
-                info!("request: {}", &json!({ "endpoint": format!("{}", req.path()), "host": host }));
+                log::info!("request: {}", &json!({ "endpoint": format!("{}", req.path()), "host": host }));
 
                 srv.call(req)
             })
@@ -586,7 +581,7 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                 true => path.join("manifest.json"),
                 false => path.clone()
             };
-            info!("serving manifest from path: {:?}", &fq);
+            log::info!("serving manifest from path: {:?}", &fq);
 
             match fs::read_to_string(&fq) {
                 Ok(manifest_str) => {
@@ -604,7 +599,7 @@ async fn manifest(registry: Registry, info: web::Path<FetchInfo>) -> Result<Whar
                     Ok(WharfixManifest::new(manifest_str, fq))
                 },
                 Err(e) => {
-                    error!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference);
+                    log::error!("failed to read manifest for image: {name}, {reference}", name=info.name, reference=info.reference);
 
                     Err(e.manifest_context(&info))
                 }
@@ -656,7 +651,7 @@ async fn blob(registry: Registry, info: web::Path<FetchInfo>) -> Result<WharfixB
             })
         },
         Err(e) => {
-            error!("failed to read blob: {digest}", digest=&info.reference);
+            log::error!("failed to read blob: {digest}", digest=&info.reference);
 
             Err(e)
         }
@@ -682,7 +677,7 @@ fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     Ok(if clone_target.exists() {
         Repository::open_bare(&clone_target).or_else(|e| Err(RepoError::Git(e)))
     } else {
-        info!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target);
+        log::info!("registry, url: {}, {} - does not have an active clone, cloning into: {:?}", &name, &url, &clone_target);
 
         let mut init_opts = RepositoryInitOptions::new();
         init_opts.bare(true);

@@ -10,9 +10,6 @@ use serde_json::json;
 
 use async_process::ExitStatus;
 
-#[allow(unused)]
-use log::{debug, error, info, trace, warn};
-
 #[allow(dead_code)]
 pub enum ImageBuildError {
     NotFound,
@@ -165,7 +162,7 @@ impl DockerError {
         }
     }
     pub fn unknown<E: std::fmt::Debug>(text: &str, err: E) -> Self {
-        error!("{}: {:#?}", text, &err);
+        log::error!("{}: {:#?}", text, &err);
         DockerError {
             code: DockerErrorCode::Snafu,
             message: text.to_string(),
