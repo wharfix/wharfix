@@ -12,10 +12,6 @@
     # Exists for testing
     wharfixNonStreaming = {
       url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        crane.follows = "crane";
-      };
     };
   };
 
