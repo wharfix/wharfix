@@ -2,7 +2,7 @@
   description = "wharfix";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
 
     crane = {
       url = "github:ipetkov/crane";
@@ -71,6 +71,7 @@
       inputsFrom = [ self.defaultPackage.${system} ];
       nativeBuildInputs = [
         cargo
+        cargo-outdated
         rustc
         nix
         rustfmt
