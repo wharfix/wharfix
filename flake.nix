@@ -13,9 +13,14 @@
     wharfixNonStreaming = {
       url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
     };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, crane, nixpkgs, wharfixNonStreaming }:
+  outputs = { self, crane, nixpkgs, wharfixNonStreaming, treefmt-nix }:
   let
     pname = "wharfix";
     system = "x86_64-linux";
@@ -31,6 +36,8 @@
       overlays = [ self.overlay crane-overlay ];
     };
     lib = nixpkgs.lib;
+
+    treefmtEval = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
 
     outputPackages = {
       "${pname}" = [];
@@ -75,6 +82,8 @@
       ];
     };
 
+    formatter.${system} = treefmtEval.config.build.wrapper;
+
     checks."x86_64-linux" = {
       oom-positive = pkgs.callPackage ./tests/oom.nix {};
       oom-negative = pkgs.callPackage ./tests/oom.nix {
@@ -83,6 +92,7 @@
       };
       ref = pkgs.callPackage ./tests/ref.nix {};
       arguments = pkgs.callPackage ./tests/arguments.nix {};
+      formatting = treefmtEval.config.build.check self;
     };
   };
 }
