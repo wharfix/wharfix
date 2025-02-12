@@ -4,7 +4,7 @@
   nixosTest,
   runCommandNoCC,
   wharfix,
-  indexFileName ? "not-default.nix"
+  indexFileName ? "not-default.nix",
 }:
 let
   addr = "0.0.0.0";
@@ -12,7 +12,7 @@ let
   image = "nyancat";
   blob-cache-dir = "/root";
   target = "/tmp/new-target";
-  repo = runCommandNoCC "repo" { nativeBuildInputs = [git]; } ''
+  repo = runCommandNoCC "repo" { nativeBuildInputs = [ git ]; } ''
     mkdir -p $out
     pushd $out
     git init
@@ -24,10 +24,12 @@ let
   '';
 in
 nixosTest {
-    name = "arguments";
+  name = "arguments";
 
-    nodes = {
-      registry = { pkgs, ... }: {
+  nodes = {
+    registry =
+      { pkgs, ... }:
+      {
 
         imports = [
           ./res/registry-base.nix
@@ -60,7 +62,7 @@ nixosTest {
                 --target ${target} \
                 --index-file-path ${indexFileName} \
                 --add-nix-gcroots
-              '';
+            '';
           };
         };
         systemd.services.wharfix-path = {
@@ -81,52 +83,54 @@ nixosTest {
                 --target ${target} \
                 --index-file-path ${indexFileName} \
                 --add-nix-gcroots
-              '';
+            '';
           };
         };
 
         networking.firewall.allowedTCPPorts = [ port ];
       };
 
-      client = { ... }: {
+    client =
+      { ... }:
+      {
         virtualisation.docker.enable = true;
         virtualisation.docker.extraOptions = "--insecure-registry registry:${builtins.toString port}";
       };
 
-    };
+  };
 
-    testScript = ''
-      start_all()
+  testScript = ''
+    start_all()
 
-      registry.wait_for_open_port(${builtins.toString port})
-      registry.wait_for_unit("wharfix.service")
-      client.wait_for_unit("docker.service")
+    registry.wait_for_open_port(${builtins.toString port})
+    registry.wait_for_unit("wharfix.service")
+    client.wait_for_unit("docker.service")
 
-      client.succeed("docker pull registry:${builtins.toString port}/${image}:master")
+    client.succeed("docker pull registry:${builtins.toString port}/${image}:master")
 
-      # Test --blob-cache-dir
-      registry.succeed("stat ${blob-cache-dir}")
+    # Test --blob-cache-dir
+    registry.succeed("stat ${blob-cache-dir}")
 
-      # Test --target
-      registry.succeed("stat ${target}")
+    # Test --target
+    registry.succeed("stat ${target}")
 
-      # Test --add-nix-gcroots
-      registry.succeed("unlink ${blob-cache-dir}/ma/manifest.json")
-      registry.fail("unlink ${blob-cache-dir}/ma/manifest.json")
+    # Test --add-nix-gcroots
+    registry.succeed("unlink ${blob-cache-dir}/ma/manifest.json")
+    registry.fail("unlink ${blob-cache-dir}/ma/manifest.json")
 
-      registry.succeed("systemctl stop wharfix")
+    registry.succeed("systemctl stop wharfix")
 
-      registry.fail("wharfix")
-      registry.fail("wharfix --index-file-path really-does-not-exist-${indexFileName} --port ${builtins.toString port}")
-      registry.fail("wharfix --index-file-path ${indexFileName} --address 256.256.256.256 --port ${builtins.toString port}")
-      registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo not-a-repository --port ${builtins.toString port}")
-      registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo ${repo} --port not-a-valid-port")
-      registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo ${repo} --port 65536")
-      registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo ${repo} --port ${builtins.toString port} --blob-cache-dir /tmp/does-not-exist")
+    registry.fail("wharfix")
+    registry.fail("wharfix --index-file-path really-does-not-exist-${indexFileName} --port ${builtins.toString port}")
+    registry.fail("wharfix --index-file-path ${indexFileName} --address 256.256.256.256 --port ${builtins.toString port}")
+    registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo not-a-repository --port ${builtins.toString port}")
+    registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo ${repo} --port not-a-valid-port")
+    registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo ${repo} --port 65536")
+    registry.fail("wharfix --index-file-path ${indexFileName} --address ${addr} --repo ${repo} --port ${builtins.toString port} --blob-cache-dir /tmp/does-not-exist")
 
-      # Test --path
-      registry.succeed("systemctl start wharfix-path")
-      registry.wait_for_unit("wharfix-path.service")
-      client.succeed("docker pull registry:${builtins.toString port}/${image}:master")
-    '';
+    # Test --path
+    registry.succeed("systemctl start wharfix-path")
+    registry.wait_for_unit("wharfix-path.service")
+    client.succeed("docker pull registry:${builtins.toString port}/${image}:master")
+  '';
 }

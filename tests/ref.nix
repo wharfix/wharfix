@@ -3,7 +3,7 @@
   nix,
   nixosTest,
   wharfix,
-  writeShellScriptBin
+  writeShellScriptBin,
 }:
 let
   port = 8080;
@@ -12,70 +12,79 @@ let
   pullImageSucceed = pullImage "succeed";
   pullImageFail = pullImage "fail";
 
-  pullImage = action: name: tag:
+  pullImage =
+    action: name: tag:
     ''client.${action}("docker pull registry:${toString port}/${name}:${tag}")'';
 in
 nixosTest {
   name = "ref-test";
 
   nodes = {
-    registry = { pkgs, ... }: {
+    registry =
+      { pkgs, ... }:
+      {
 
-      imports = [
-        ./res/registry-base.nix
-      ];
+        imports = [
+          ./res/registry-base.nix
+        ];
 
-      environment.systemPackages = [ 
-        git
-      ];
+        environment.systemPackages = [
+          git
+        ];
 
-      systemd.services.repo-setup = {
-        before = [ "wharfix.service" ];
-        requiredBy = [ "wharfix.service" ];
-        path = [ git ];
-        serviceConfig.Type = "oneshot";
-        script = ''
-          mkdir ${repoPath}
-          pushd ${repoPath}
-          git init
-          git add .
-          git config user.email "example@example.com";
-          git config user.name "test";
-          cp ${./res/old-index.nix} default.nix
-          cp ${./res/new-index.nix} new-index.nix
-          git add .
-          git commit -m "Initial commit"
-        '';
-      };
-
-      systemd.services.wharfix = {
-        wantedBy = [ "multi-user.target" ];
-        after = [ "network.target" ];
-        path = [ git nix ];
-        environment.NIX_PATH = "nixpkgs=${pkgs.path}";
-        serviceConfig = {
-          ExecStart = ''${wharfix}/bin/wharfix \
-            --port ${toString port} \
-            --repo ${repoPath}'';
+        systemd.services.repo-setup = {
+          before = [ "wharfix.service" ];
+          requiredBy = [ "wharfix.service" ];
+          path = [ git ];
+          serviceConfig.Type = "oneshot";
+          script = ''
+            mkdir ${repoPath}
+            pushd ${repoPath}
+            git init
+            git add .
+            git config user.email "example@example.com";
+            git config user.name "test";
+            cp ${./res/old-index.nix} default.nix
+            cp ${./res/new-index.nix} new-index.nix
+            git add .
+            git commit -m "Initial commit"
+          '';
         };
+
+        systemd.services.wharfix = {
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network.target" ];
+          path = [
+            git
+            nix
+          ];
+          environment.NIX_PATH = "nixpkgs=${pkgs.path}";
+          serviceConfig = {
+            ExecStart = ''
+              ${wharfix}/bin/wharfix \
+                          --port ${toString port} \
+                          --repo ${repoPath}'';
+          };
+        };
+
+        networking.firewall.allowedTCPPorts = [ port ];
       };
 
-      networking.firewall.allowedTCPPorts = [ port ];
-    };
+    client =
+      { ... }:
+      {
+        environment.systemPackages = [
+          (writeShellScriptBin "pull-tag-from-file" ''
+            set -euo pipefail
+            IMAGE="$1"
+            TAG="$(cat $2)"
+            docker pull registry:${toString port}/$IMAGE:$TAG
+          '')
+        ];
 
-    client = { ... }: {
-      environment.systemPackages = [
-        (writeShellScriptBin "pull-tag-from-file" ''
-          set -euo pipefail
-          IMAGE="$1"
-          TAG="$(cat $2)"
-          docker pull registry:${toString port}/$IMAGE:$TAG
-        '')
-      ];
-
-      virtualisation.docker.enable = true;
-      virtualisation.docker.extraOptions = "--insecure-registry registry:${toString port}";
-    };
+        virtualisation.docker.enable = true;
+        virtualisation.docker.extraOptions = "--insecure-registry registry:${toString port}";
+      };
   };
 
   testScript = ''
@@ -103,4 +112,3 @@ nixosTest {
     client.fail("/run/current-system/sw/bin/pull-tag-from-file old-cow /tmp/shared/new.rev")
   '';
 }
-
