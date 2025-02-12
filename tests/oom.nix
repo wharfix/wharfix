@@ -4,10 +4,10 @@
   nix,
   nixosTest,
   runCommandNoCC,
-  wharfix
+  wharfix,
 }:
 let
-  repo = runCommandNoCC "repo" { nativeBuildInputs = [git]; } ''
+  repo = runCommandNoCC "repo" { nativeBuildInputs = [ git ]; } ''
     mkdir -p $out
     pushd $out
     git init
@@ -19,10 +19,12 @@ let
   '';
 in
 nixosTest {
-    name = "oom-test";
+  name = "oom-test";
 
-    nodes = {
-      registry = { pkgs, ... }: {
+  nodes = {
+    registry =
+      { pkgs, ... }:
+      {
 
         imports = [
           ./res/registry-base.nix
@@ -57,21 +59,23 @@ nixosTest {
         networking.firewall.allowedTCPPorts = [ 8080 ];
       };
 
-      client = { ... }: {
+    client =
+      { ... }:
+      {
         virtualisation.diskSize = 40240;
         virtualisation.docker.enable = true;
         virtualisation.docker.extraOptions = "--insecure-registry registry:8080";
       };
 
-    };
+  };
 
-    testScript = ''
-      start_all()
+  testScript = ''
+    start_all()
 
-      registry.wait_for_open_port(8080)
-      registry.wait_for_unit("wharfix.service")
-      client.wait_for_unit("docker.service")
+    registry.wait_for_open_port(8080)
+    registry.wait_for_unit("wharfix.service")
+    client.wait_for_unit("docker.service")
 
-      client.${expectedResult}("docker pull registry:8080/kubernetes:master")
-    '';
+    client.${expectedResult}("docker pull registry:8080/kubernetes:master")
+  '';
 }

@@ -1,4 +1,5 @@
-{ pkgs }: {
+{ pkgs }:
+{
   name = "toolbox";
   contents = with pkgs; [
     bashInteractive

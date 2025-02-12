@@ -81,14 +81,10 @@ pub fn build_cli() -> Command {
                 .default_value("8088")
         );
 
-        #[cfg(feature = "mysql")]
-        let cmd = cmd.arg(
-            arg!(--dbconnfile <DBCONNFILE> "Path to file from which to read db connection details.")
-                .required_unless_present_any([
-                    "path",
-                    "repo",
-                    "derivationoutput",
-                ]),
-        );
-        cmd
+    #[cfg(feature = "mysql")]
+    let cmd = cmd.arg(
+        arg!(--dbconnfile <DBCONNFILE> "Path to file from which to read db connection details.")
+            .required_unless_present_any(["path", "repo", "derivationoutput"]),
+    );
+    cmd
 }
