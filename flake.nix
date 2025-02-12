@@ -14,6 +14,11 @@
       url = "github:wharfix/wharfix/1f71fcafbc9caed5fa5d38f01598aaadb6176e08";
     };
 
+    pre-commit-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -27,6 +32,7 @@
       nixpkgs,
       wharfixNonStreaming,
       treefmt-nix,
+      pre-commit-hooks,
     }:
     let
       pname = "wharfix";
@@ -75,12 +81,8 @@
                     in
                     path: type: craneLib.filterCargoSources path type || drvnix path type;
                 };
-              nativeBuildInputs = with final; [
-                pkg-config
-              ];
-              buildInputs = with final; [
-                openssl
-              ];
+              nativeBuildInputs = with final; [ pkg-config ];
+              buildInputs = with final; [ openssl ];
               cargoExtraArgs = final.lib.concatMapStringsSep " " (f: "--features=${f}") features;
             });
         in
@@ -89,6 +91,8 @@
       devShell.${system} =
         with pkgs;
         mkShell {
+          inherit (self.checks.${system}.pre-commit-check) shellHook;
+          buildInputs = self.checks.${system}.pre-commit-check.enabledPackages;
           inputsFrom = [ self.defaultPackage.${system} ];
           nativeBuildInputs = [
             cargo
@@ -111,6 +115,13 @@
         ref = pkgs.callPackage ./tests/ref.nix { };
         arguments = pkgs.callPackage ./tests/arguments.nix { };
         formatting = treefmtEval.config.build.check self;
+        pre-commit-check = pre-commit-hooks.lib.${system}.run {
+          src = ./.;
+          hooks = {
+            rustfmt.enable = true;
+            nixfmt-rfc-style.enable = true;
+          };
+        };
       };
     };
 }
