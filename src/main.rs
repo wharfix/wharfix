@@ -70,6 +70,8 @@ const CONTENT_TYPE_DIFFTAR: &str = "application/vnd.docker.image.rootfs.diff.tar
 const CONTENT_TYPE_CONTAINER_CONFIG: &str = "application/vnd.docker.container.image.v1+json";
 const CONTENT_TYPE_UNKNOWN: &str = "application/octet-stream";
 
+const FD_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
 lazy_static! {
     static ref BLOBS: RwLock<HashMap<String, BlobInfo>> = RwLock::new(HashMap::new());
 }
@@ -567,6 +569,22 @@ fn main() {
     }
 }
 
+async fn open_file_limit() -> usize {
+    tokio::task::spawn_blocking(|| {
+        unsafe { libc::getdtablesize() }
+            .try_into()
+            .expect("getdtablesize(): failed to fetch RLIMIT_NOFILE")
+    })
+    .await
+    .expect("spawn_blocking: failed to get file limit")
+}
+
+async fn get_open_fds_count() -> usize {
+    tokio::task::spawn_blocking(|| std::fs::read_dir("/proc/self/fd").unwrap().count())
+        .await
+        .unwrap()
+}
+
 #[cfg(feature = "mysql")]
 fn db_connect(creds_file: PathBuf) -> Pool {
     Pool::new(mysql::Opts::from_url(&fs::read_to_string(&creds_file).unwrap()).unwrap()).unwrap()
@@ -576,8 +594,21 @@ fn db_connect(creds_file: PathBuf) -> Pool {
 async fn listen(listen_address: String, listen_port: u16) -> std::io::Result<()> {
     log::info!("start listening on port: {}", listen_port);
 
+    let max_file_descriptors = open_file_limit().await;
     let manifest_url = "/v2/{name}/manifests/{reference}";
     let blob_url = "/v2/{name}/blobs/{reference}";
+
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(FD_CHECK_INTERVAL).await;
+            let current_fds = get_open_fds_count().await;
+            log::info!("number of open filedescriptors: {current_fds}");
+            if current_fds > max_file_descriptors {
+                eprintln!("CRITICAL: Too many open file descriptors: {}", current_fds);
+                std::process::exit(1);
+            }
+        }
+    });
 
     HttpServer::new(move || {
         App::new()
