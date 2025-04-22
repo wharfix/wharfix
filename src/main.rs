@@ -149,7 +149,8 @@ impl ManifestDelivery {
             Self::Path(p) => Ok(p.clone()),
             Self::Derivation(output) => {
                 lazy_static! {
-                    static ref RE: Regex = Regex::new("^[a-z0-9._-]{32,128}$").unwrap();
+                    static ref RE: Regex = Regex::new("^[a-z0-9._-]{32,128}$")
+                        .expect("Failed to construct derivation regex");
                 }
                 let derivation_file = PathBuf::from(format!("/nix/store/{}.drv", &info.reference));
                 if !RE.is_match(&info.reference) {
@@ -172,10 +173,10 @@ impl ManifestDelivery {
                 let fq: PathBuf = serve_root.join(
                     INDEX_FILE_PATH
                         .get()
-                        .unwrap()
+                        .expect("Failed to unlock INDEX_FILE_PATH in ManifestDelivery.index")
                         .as_ref()
-                        .map(|i| i.to_str().unwrap())
-                        .unwrap(),
+                        .map(|i| i.to_str().expect("Failed to turn INDEX_FILE_PATH into string in ManifestDelivery.index"))
+                        .expect("Failed mapping on INDEX_FILE_PATH in ManifestDelivery.index"),
                 );
                 log::info!("looking for indexfile at {:?}", &fq);
 
@@ -186,21 +187,25 @@ impl ManifestDelivery {
                     .arg(format!(
                         "builtins.hasAttr \"{}\" (import {} {})",
                         &info.name,
-                        &fq.to_str().unwrap(),
+                        &fq.to_str()
+                            .expect("Failed turning fqdn itno string in ManifestDelivery.index"),
                         "{}"
                     ))
                     .stdout(Stdio::piped())
                     .spawn()
-                    .unwrap();
+                    .expect("Failed spawning nix-instatiate in ManifestDelivery.index");
 
-                let out: Output = child.output().await.unwrap();
+                let out: Output = child
+                    .output()
+                    .await
+                    .expect("Failed awaiting nix-instatiate in ManifestDeliver.index");
                 let mut line_bytes = vec![];
                 let mut reader = LineReader::new(&out.stdout[..]);
                 while let Some(line) = reader.next_line() {
-                    line_bytes = line.expect("read error").to_vec();
+                    line_bytes = line.expect("Failed reading next line of nix-instatiate output in ManifestDeliver.index").to_vec();
                 }
 
-                if String::from_utf8(line_bytes).unwrap().trim() == "false" {
+                if String::from_utf8(line_bytes).expect("Failed turning nix-instantiate line reader output to utf8 in ManifestDeliver.index").trim() == "false" {
                     Err(RepoError::IndexAttributeNotFound)?
                 };
                 Ok(())
@@ -213,30 +218,41 @@ impl ManifestDelivery {
 
         let mut cmd = Command::new("nix-build");
         cmd.arg("--no-out-link");
-        if SUBSTITUTERS.get().unwrap().is_some() {
+        if SUBSTITUTERS
+            .get()
+            .expect("Failed to unlock SUBSTITUTERS in ManifestDeliver.manifest")
+            .is_some()
+        {
             cmd.arg("--option");
             cmd.arg("substituters");
-            cmd.arg(SUBSTITUTERS.get().unwrap().as_ref().unwrap());
+            cmd.arg(
+                SUBSTITUTERS
+                    .get()
+                    .expect("Failed to unlock SUBSTITUTERS in ManifestDeliver.manifest")
+                    .as_ref()
+                    .expect("Failed to turn SUBSTITUTERS into ref in ManifestDeliver.manifest"),
+            );
         }
 
-        let mut drv_file = NamedTempFile::new().unwrap();
+        let mut drv_file = NamedTempFile::new()
+            .expect("Failed to construct NamedTempFile in ManifestDeliver.manifest");
         let child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(
                     INDEX_FILE_PATH
                         .get()
-                        .unwrap()
+                        .expect("Failed to unlock INDEX_FILE_PATH in ManifestDeliver.manifest")
                         .as_ref()
-                        .map(|i| i.to_str().unwrap())
-                        .unwrap(),
+                        .map(|i| i.to_str().expect("Failed to turn INDEX_FILE_PATH into string in ManifestDelivery.manifest"))
+                        .expect("Failed mapping on INDEX_FILE_PATH in ManifestDelivery.manifest"),
                 );
-                if *INDEX_FILE_IS_BUILDABLE.get().unwrap() {
-                    cmd.arg(&fq.to_str().unwrap()).arg("-A").arg(&info.name)
+                if *INDEX_FILE_IS_BUILDABLE.get().expect("Failed to unlock INDEX_FILE_IS_BUILDABLE in ManifestDelivery.manifest") {
+                    cmd.arg(&fq.to_str().expect("Failed turning fdqn into str in ManifestDelivery.manifest")).arg("-A").arg(&info.name)
                 } else {
-                    drv_file.write_all(include_bytes!("../drv.nix")).unwrap();
+                    drv_file.write_all(include_bytes!("../drv.nix")).expect("write_all call failed for drv.nix in ManifestDelivery.manifest");
                     cmd.arg("--arg")
                         .arg("indexFile")
-                        .arg(&fq.to_str().unwrap())
+                        .arg(&fq.to_str().expect("Failed turning fdqn into str in ManifestDelivery.manifest"))
                         .arg(&drv_file.path())
                         .arg("-A")
                         .arg(&info.name)
@@ -246,17 +262,23 @@ impl ManifestDelivery {
         }
         .stdout(Stdio::piped())
         .spawn()
-        .unwrap();
+                    .expect("Failed spawning nix-build in ManifestDelivery.manifest");
 
-        let out: Output = child.output().await.unwrap();
+        let out: Output = child
+            .output()
+            .await
+            .expect("Failed awaiting nix-build in ManifestDelivery.manifest");
         let mut line_bytes = vec![];
         let mut reader = LineReader::new(out.stdout.as_slice());
         while let Some(line) = reader.next_line() {
             line_bytes = line.expect("read error").to_vec();
         }
 
-        let stringed = String::from_utf8(line_bytes).unwrap();
-        Ok(PathBuf::from_str(stringed.trim_end()).unwrap())
+        let stringed = String::from_utf8(line_bytes).expect(
+            "Failed turning nix-build line reader output to utf8 in ManifestDelivery.manifest",
+        );
+        Ok(PathBuf::from_str(stringed.trim_end())
+            .expect("Failed turning \"stringed\" into PathBuf in ManifestDelivery.manifest"))
     }
 }
 
