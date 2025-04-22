@@ -432,9 +432,17 @@ async fn nix_derivation_info(derivation_file: &Path) -> Derivation {
     let mut cmd = Command::new("nix");
     cmd.arg("show-derivation").arg(derivation_file);
     cmd.stdout(Stdio::piped());
-    let child = cmd.spawn().unwrap();
-    let bytes = child.output().await.unwrap().stdout;
-    let out: Derivation = serde_json::from_slice(&bytes).unwrap();
+    let child = cmd
+        .spawn()
+        .expect("Failed to spawn nix show-derivation in nix_derivation_info");
+    let bytes = child
+        .output()
+        .await
+        .expect("Failed awaiting nix show-derivation in nix_derivation_info")
+        .stdout;
+    let out: Derivation = serde_json::from_slice(&bytes).expect(
+        "Failed turning process slice from nix show-derivation into json in nix_deriation_info",
+    );
     out
 }
 
