@@ -588,7 +588,7 @@ fn main() {
             ),
             m if m.contains_id("repo") => ServeType::Repo(
                 m.get_one::<String>("repo")
-                    .expect("Failed getting repo arguemnt as string in main")
+                    .expect("Failed getting repo argument as string in main")
                     .to_string(),
             ),
             #[cfg(feature = "mysql")]
