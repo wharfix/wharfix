@@ -301,7 +301,9 @@ async fn nix_add_root(gc_root_path: &Path, store_path: &Path) -> Result<(), Repo
 fn get_bucket_prefix(name: &str) -> &str {
     let parts: Vec<&str> = name.split(':').collect();
     let subject = if parts.len() > 1 { parts[1] } else { parts[0] };
-    subject.get(0..2).unwrap()
+    subject
+        .get(0..2)
+        .expect("Failed to get subject(0..2) in get_bucket_prefix")
 }
 
 impl BlobDelivery {
