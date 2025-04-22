@@ -452,16 +452,16 @@ impl ServeType {
     fn to_registry(host: &str) -> Result<Registry, DockerError> {
         let serve_type = SERVE_TYPE
             .get()
-            .unwrap()
+            .expect("Failed unlocking SERVE_TYPE in ServeType.to_registry")
             .as_ref()
             .ok_or(DockerError::snafu(
-                "serve type unwrap error, this shouldn't happen :(",
+                "Failed getting serve_type as reference, this shouldn't happen :(",
             ))?;
         let name = host;
 
         let blob_delivery = BLOB_CACHE_DIR
             .get()
-            .unwrap()
+            .expect("Failed unlocking BLOB_CACHE_DIR in ServeType.blob_delivery")
             .as_ref()
             .map(|dir| BlobDelivery::Persistent(dir.clone()))
             .unwrap_or(BlobDelivery::Memory);
@@ -471,7 +471,8 @@ impl ServeType {
             ServeType::Database(pool) => {
                 lazy_static! {
                     static ref RE: Regex =
-                        Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?").unwrap();
+                        Regex::new("([a-zA-Z0-9-]{3,64})\\.wharfix\\.dev(:[0-9]+)?")
+                            .expect("Failed constructing regex in ServeType.to_registry");
                 }
                 let name = RE
                     .captures(host)
