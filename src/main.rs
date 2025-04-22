@@ -199,14 +199,14 @@ impl ManifestDelivery {
                 let out: Output = child
                     .output()
                     .await
-                    .expect("Failed awaiting nix-instatiate in ManifestDeliver.index");
+                    .expect("Failed awaiting nix-instatiate in ManifestDelivery.index");
                 let mut line_bytes = vec![];
                 let mut reader = LineReader::new(&out.stdout[..]);
                 while let Some(line) = reader.next_line() {
-                    line_bytes = line.expect("Failed reading next line of nix-instatiate output in ManifestDeliver.index").to_vec();
+                    line_bytes = line.expect("Failed reading next line of nix-instatiate output in ManifestDelivery.index").to_vec();
                 }
 
-                if String::from_utf8(line_bytes).expect("Failed turning nix-instantiate line reader output to utf8 in ManifestDeliver.index").trim() == "false" {
+                if String::from_utf8(line_bytes).expect("Failed turning nix-instantiate line reader output to utf8 in ManifestDelivery.index").trim() == "false" {
                     Err(RepoError::IndexAttributeNotFound)?
                 };
                 Ok(())
