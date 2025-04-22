@@ -870,12 +870,16 @@ fn repo_checkout(repo: &Repository, reference: &String, tmp_path: &Path) -> Resu
 fn fetch_options<'l>() -> FetchOptions<'l> {
     let mut fo = FetchOptions::new();
 
-    match SSH_PRIVATE_KEY.get().unwrap().as_ref() {
+    match SSH_PRIVATE_KEY
+        .get()
+        .expect("Failed unlocking SSH_PRIVATE_KEY in fetch_options")
+        .as_ref()
+    {
         Some(key) => {
             let mut callbacks = RemoteCallbacks::new();
             callbacks.credentials(move |_url, username_from_url, _allowed_types| {
                 Cred::ssh_key(
-                    username_from_url.unwrap(),
+                    username_from_url.expect("Failed username_from_url in fetch_options"),
                     None,
                     std::path::Path::new(&key.to_owned()),
                     None,
