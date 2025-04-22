@@ -1,3 +1,4 @@
+#![deny(clippy::unwrap_used)]
 use actix_web::http::StatusCode;
 use std::collections::HashMap;
 use std::string::String;
