@@ -618,7 +618,14 @@ fn main() {
 
 #[cfg(feature = "mysql")]
 fn db_connect(creds_file: PathBuf) -> Pool {
-    Pool::new(mysql::Opts::from_url(&fs::read_to_string(&creds_file).unwrap()).unwrap()).unwrap()
+    Pool::new(
+        mysql::Opts::from_url(
+            &fs::read_to_string(&creds_file)
+                .expect("Failed reading creds_file as string in db_connect"),
+        )
+        .expect("Failed creating mysql opts from url in db_connect"),
+    )
+    .expect("Failed creating a new pool in db_connection")
 }
 
 #[actix_rt::main]
