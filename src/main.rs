@@ -762,7 +762,7 @@ async fn manifest(
             //no dice, try evaling+building
             let tmp_dir = TempDir::new("wharfix")
                 .or_else(|e| Err(RepoError::IO(Box::new(e))))
-                .unwrap();
+                .expect("Failed creating new TempDir wharfix in manifest");
             let serve_root = registry
                 .prepare(tmp_dir.path(), &info)
                 .await
@@ -794,7 +794,12 @@ async fn manifest(
                             registry
                                 .store_blob(
                                     BlobInfo {
-                                        name: path_base_name.to_str().unwrap().to_owned(),
+                                        name: path_base_name
+                                            .to_str()
+                                            .expect(
+                                                "Failed turing path_base_name into str in manifest",
+                                            )
+                                            .to_owned(),
                                         content_type: CONTENT_TYPE_MANIFEST.to_owned(),
                                         path: path.clone(),
                                     },
