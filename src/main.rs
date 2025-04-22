@@ -539,7 +539,10 @@ fn main() {
 
     if let Err(e) = || -> Result<(), MainError> {
         let m = cli::build_cli().get_matches();
-        let listen_address = m.get_one::<String>("address").unwrap().to_string();
+        let listen_address = m
+            .get_one::<String>("address")
+            .expect("Failed to get address argument as string in main")
+            .to_string();
         let listen_port: u16 = m
             .get_one::<String>("port")
             .ok_or(MainError::ArgParse("Missing cmdline arg 'port'"))?
@@ -548,7 +551,11 @@ fn main() {
                 "cmdline arg 'port' doesn't look like a port number",
             )))?;
 
-        let target_dir = PathBuf::from_str(m.get_one::<String>("target").unwrap()).unwrap();
+        let target_dir = PathBuf::from_str(
+            m.get_one::<String>("target")
+                .expect("Failed to get target argument as string in main"),
+        )
+        .expect("Failed to turn target argument into PathBuf in main");
         fs::create_dir(&target_dir)
             .or_else(|e| -> Result<(), std::io::Error> {
                 match e.kind() {
@@ -562,35 +569,52 @@ fn main() {
                     ),
                 }
             })
-            .unwrap();
+            .expect("Failed to create_dir for target_dir in main");
 
         let serve_type = Some(match &m {
             m if m.contains_id("path") => ServeType::Path(
                 fs::canonicalize(
-                    PathBuf::from_str(m.get_one::<String>("path").unwrap())
-                        .unwrap()
-                        .as_path(),
+                    PathBuf::from_str(
+                        m.get_one::<String>("path")
+                            .expect("Failed to get path argument as string in main"),
+                    )
+                    .expect("Failed turning path argument into PathBuf in main")
+                    .as_path(),
                 )
                 .or(Err(MainError::ArgParse(
                     "cmdline arg 'path' doesn't look like an actual path",
                 )))?,
             ),
-            m if m.contains_id("repo") => {
-                ServeType::Repo(m.get_one::<String>("repo").unwrap().to_string())
-            }
+            m if m.contains_id("repo") => ServeType::Repo(
+                m.get_one::<String>("repo")
+                    .expect("Failed getting repo arguemnt as string in main")
+                    .to_string(),
+            ),
             #[cfg(feature = "mysql")]
             m if m.contains_id("dbconnfile") => ServeType::Database(db_connect(
-                PathBuf::from_str(m.get_one::<String>("dbconnfile").unwrap()).unwrap(),
+                PathBuf::from_str(
+                    m.get_one::<String>("dbconnfile")
+                        .expect("Failed getting dbconnfile argument as string in main"),
+                )
+                .expect("Failed turning dbconnfile argument into PathhBuf in main"),
             )),
-            m if m.contains_id("derivationoutput") => {
-                ServeType::Derivation(m.get_one::<String>("derivationoutput").unwrap().to_string())
-            }
+            m if m.contains_id("derivationoutput") => ServeType::Derivation(
+                m.get_one::<String>("derivationoutput")
+                    .expect("Failed getting derivationoutput argument in main")
+                    .to_string(),
+            ),
             _ => panic!("clap should ensure this never happens"),
         });
 
         let blob_cache_dir = {
             if m.contains_id("blobcachedir") {
-                Some(fs::canonicalize(m.get_one::<String>("blobcachedir").unwrap()).unwrap())
+                Some(
+                    fs::canonicalize(
+                        m.get_one::<String>("blobcachedir")
+                            .expect("Failed to canonicalize blobcachedir argument in main"),
+                    )
+                    .expect("Failed finding blobcachedir argument in main"),
+                )
             } else {
                 None
             }
@@ -603,11 +627,17 @@ fn main() {
         ADD_NIX_GCROOTS.get_or_init(|| m.get_flag("addnixgcroots"));
         INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.get_flag("indexfileisbuildable"));
         SERVE_TYPE.get_or_init(|| serve_type);
-        TARGET_DIR.get_or_init(|| Some(fs::canonicalize(target_dir).unwrap()));
+        TARGET_DIR.get_or_init(|| {
+            Some(fs::canonicalize(target_dir).expect("Failed to canonicalize target_dir in main"))
+        });
         BLOB_CACHE_DIR.get_or_init(|| blob_cache_dir);
         SUBSTITUTERS.get_or_init(|| m.get_one::<String>("substituters").map(|s| s.to_string()));
-        INDEX_FILE_PATH
-            .get_or_init(|| Some(PathBuf::from(m.get_one::<String>("indexfilepath").unwrap())));
+        INDEX_FILE_PATH.get_or_init(|| {
+            Some(PathBuf::from(
+                m.get_one::<String>("indexfilepath")
+                    .expect("Failed to get indexfilepath in main"),
+            ))
+        });
         SSH_PRIVATE_KEY.get_or_init(|| fo);
 
         listen(listen_address, listen_port).or_else(|e| Err(MainError::ListenBind(e)))
