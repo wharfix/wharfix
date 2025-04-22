@@ -313,12 +313,16 @@ impl BlobDelivery {
 
         match self {
             BlobDelivery::Memory => {
-                BLOBS.write().unwrap().insert(info.name.clone(), info);
+                BLOBS
+                    .write()
+                    .expect("Failed to write BLOBS in BlobDelivery.store_blob")
+                    .insert(info.name.clone(), info);
             }
             BlobDelivery::Persistent(dir) => {
                 let bucket_prefix = get_bucket_prefix(&info.name);
                 let bucket_dir = dir.join(&bucket_prefix);
-                std::fs::create_dir_all(&bucket_dir).unwrap();
+                std::fs::create_dir_all(&bucket_dir)
+                    .expect("Failed to create_dir_all for bucket_dir in BlobDelivery.store_blob");
                 let cache_path = bucket_dir.join(&info.name);
                 match fs::symlink(&info.path, &cache_path) {
                     Ok(_) => {}
@@ -328,14 +332,18 @@ impl BlobDelivery {
                         }
                     }
                 }
-                if is_gc_rootable && *ADD_NIX_GCROOTS.get().unwrap() {
+                if is_gc_rootable
+                    && *ADD_NIX_GCROOTS
+                        .get()
+                        .expect("Failed got unlock ADD_NIX_GCROOTS in BlobDelivery.store_blob")
+                {
                     nix_add_root(&cache_path, &info.path)
                         .await
                         .or_else(|e| {
                             log::error!("error caching: {}, {:#?}", &info.name, &e);
                             Err(e)
                         })
-                        .unwrap();
+                        .expect("or_else failure in BlobDelivery.store_blob");
                 }
             }
         }
@@ -349,7 +357,11 @@ impl BlobDelivery {
             .filter(|e| e.path() != path)
         {
             let file_name = PathBuf::from(entry.file_name());
-            let parts: Vec<&str> = file_name.to_str().unwrap().split('.').collect();
+            let parts: Vec<&str> = file_name
+                .to_str()
+                .expect("Failed turning file_name into str in BlobDelivery.discover")
+                .split('.')
+                .collect();
             let name = format!("sha256:{digest}", digest = parts[0]);
             self.store_blob(
                 BlobInfo {
@@ -364,7 +376,11 @@ impl BlobDelivery {
     }
     fn blob(&self, info: &FetchInfo) -> Result<BlobInfo, DockerError> {
         match self {
-            Self::Memory => match BLOBS.read().unwrap().get(&info.reference) {
+            Self::Memory => match BLOBS
+                .read()
+                .expect("Failed read on BLOBS in BlobDelivery.blob")
+                .get(&info.reference)
+            {
                 Some(blob_info) => Ok(blob_info.clone()),
                 None => Err(DockerError::blob_unknown(&info.reference)),
             },
