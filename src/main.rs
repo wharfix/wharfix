@@ -189,7 +189,7 @@ impl ManifestDelivery {
                         "builtins.hasAttr \"{}\" (import {} {})",
                         &info.name,
                         &fq.to_str()
-                            .expect("Failed turning fqdn itno string in ManifestDelivery.index"),
+                            .expect("Failed turning fqdn into string in ManifestDelivery.index"),
                         "{}"
                     ))
                     .stdout(Stdio::piped())
@@ -221,7 +221,7 @@ impl ManifestDelivery {
         cmd.arg("--no-out-link");
         if SUBSTITUTERS
             .get()
-            .expect("Failed to unlock SUBSTITUTERS in ManifestDeliver.manifest")
+            .expect("Failed to unlock SUBSTITUTERS in ManifestDelivery.manifest")
             .is_some()
         {
             cmd.arg("--option");
@@ -229,26 +229,26 @@ impl ManifestDelivery {
             cmd.arg(
                 SUBSTITUTERS
                     .get()
-                    .expect("Failed to unlock SUBSTITUTERS in ManifestDeliver.manifest")
+                    .expect("Failed to unlock SUBSTITUTERS in ManifestDelivery.manifest")
                     .as_ref()
-                    .expect("Failed to turn SUBSTITUTERS into ref in ManifestDeliver.manifest"),
+                    .expect("Failed to turn SUBSTITUTERS into ref in ManifestDelivery.manifest"),
             );
         }
 
         let mut drv_file = NamedTempFile::new()
-            .expect("Failed to construct NamedTempFile in ManifestDeliver.manifest");
+            .expect("Failed to construct NamedTempFile in ManifestDelivery.manifest");
         let child = match self {
             Self::Repo(_) | ManifestDelivery::Path(_) => {
                 let fq: PathBuf = serve_root.join(
                     INDEX_FILE_PATH
                         .get()
-                        .expect("Failed to unlock INDEX_FILE_PATH in ManifestDeliver.manifest")
+                        .expect("Failed to unlock INDEX_FILE_PATH in ManifestDelivery.manifest")
                         .as_ref()
                         .map(|i| i.to_str().expect("Failed to turn INDEX_FILE_PATH into string in ManifestDelivery.manifest"))
                         .expect("Failed mapping on INDEX_FILE_PATH in ManifestDelivery.manifest"),
                 );
                 if *INDEX_FILE_IS_BUILDABLE.get().expect("Failed to unlock INDEX_FILE_IS_BUILDABLE in ManifestDelivery.manifest") {
-                    cmd.arg(&fq.to_str().expect("Failed turning fdqn into str in ManifestDelivery.manifest")).arg("-A").arg(&info.name)
+                    cmd.arg(&fq.to_str().expect("Failed turning fqdn into str in ManifestDelivery.manifest")).arg("-A").arg(&info.name)
                 } else {
                     drv_file.write_all(include_bytes!("../drv.nix")).expect("write_all call failed for drv.nix in ManifestDelivery.manifest");
                     cmd.arg("--arg")
@@ -336,7 +336,7 @@ impl BlobDelivery {
                 if is_gc_rootable
                     && *ADD_NIX_GCROOTS
                         .get()
-                        .expect("Failed got unlock ADD_NIX_GCROOTS in BlobDelivery.store_blob")
+                        .expect("Failed unlocking ADD_NIX_GCROOTS in BlobDelivery.store_blob")
                 {
                     nix_add_root(&cache_path, &info.path)
                         .await
@@ -442,7 +442,7 @@ async fn nix_derivation_info(derivation_file: &Path) -> Derivation {
         .expect("Failed awaiting nix show-derivation in nix_derivation_info")
         .stdout;
     let out: Derivation = serde_json::from_slice(&bytes).expect(
-        "Failed turning process slice from nix show-derivation into json in nix_deriation_info",
+        "Failed turning process slice from nix show-derivation into json in nix_derivation_info",
     );
     out
 }
@@ -656,7 +656,7 @@ fn db_connect(creds_file: PathBuf) -> Pool {
         )
         .expect("Failed creating mysql opts from url in db_connect"),
     )
-    .expect("Failed creating a new pool in db_connection")
+    .expect("Failed creating a new pool in db_connect")
 }
 
 #[actix_rt::main]
@@ -798,7 +798,7 @@ async fn manifest(
                                         name: path_base_name
                                             .to_str()
                                             .expect(
-                                                "Failed turing path_base_name into str in manifest",
+                                                "Failed turning path_base_name into str in manifest",
                                             )
                                             .to_owned(),
                                         content_type: CONTENT_TYPE_MANIFEST.to_owned(),
