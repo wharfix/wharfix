@@ -597,7 +597,7 @@ fn main() {
                     m.get_one::<String>("dbconnfile")
                         .expect("Failed getting dbconnfile argument as string in main"),
                 )
-                .expect("Failed turning dbconnfile argument into PathhBuf in main"),
+                .expect("Failed turning dbconnfile argument into PathBuf in main"),
             )),
             m if m.contains_id("derivationoutput") => ServeType::Derivation(
                 m.get_one::<String>("derivationoutput")
