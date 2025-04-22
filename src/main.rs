@@ -859,7 +859,11 @@ fn file_name_to_content_type(file_name: &Path) -> String {
 fn repo_open(name: &str, url: &String) -> Result<Repository, RepoError> {
     use git2::RepositoryInitOptions;
 
-    let root_dir = TARGET_DIR.get().unwrap().as_ref().unwrap();
+    let root_dir = TARGET_DIR
+        .get()
+        .expect("Failed unlocking TARGET_DIR in repo_open")
+        .as_ref()
+        .expect("Failed turning TARGET_DIR into a reference in repo_open");
     let clone_target = root_dir.join(pathname_generator(name, url));
 
     Ok(if clone_target.exists() {
