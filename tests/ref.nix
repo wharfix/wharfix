@@ -1,7 +1,7 @@
 {
   git,
   nix,
-  nixosTest,
+  testers,
   wharfix,
   writeShellScriptBin,
 }:
@@ -16,7 +16,7 @@ let
     action: name: tag:
     ''client.${action}("docker pull registry:${toString port}/${name}:${tag}")'';
 in
-nixosTest {
+testers.nixosTest {
   name = "ref-test";
 
   nodes = {
