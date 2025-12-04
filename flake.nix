@@ -118,8 +118,8 @@
         pre-commit-check = pre-commit-hooks.lib.${system}.run {
           src = ./.;
           hooks = {
-            rustfmt.enable = true;
-            nixfmt-rfc-style.enable = true;
+            treefmt.enable = true;
+            treefmt.packageOverrides.treefmt = treefmtEval.config.build.wrapper;
           };
         };
       };
