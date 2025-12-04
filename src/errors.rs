@@ -1,10 +1,10 @@
 use crate::FetchInfo;
 use std::boxed::Box;
 
-use actix_web::body::BoxBody;
-use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use actix_web::ResponseError;
+use actix_web::body::BoxBody;
+use actix_web::http::StatusCode;
 use serde::Serialize;
 use serde_json::json;
 
