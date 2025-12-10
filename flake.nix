@@ -2,7 +2,7 @@
   description = "wharfix";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
     crane = {
       url = "github:ipetkov/crane";
@@ -118,8 +118,8 @@
         pre-commit-check = pre-commit-hooks.lib.${system}.run {
           src = ./.;
           hooks = {
-            rustfmt.enable = true;
-            nixfmt-rfc-style.enable = true;
+            treefmt.enable = true;
+            treefmt.packageOverrides.treefmt = treefmtEval.config.build.wrapper;
           };
         };
       };

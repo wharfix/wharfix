@@ -2,7 +2,7 @@
   expectedResult ? "succeed",
   git,
   nix,
-  nixosTest,
+  testers,
   runCommandNoCC,
   wharfix,
 }:
@@ -18,7 +18,7 @@ let
     git commit -m "Initial commit"
   '';
 in
-nixosTest {
+testers.nixosTest {
   name = "oom-test";
 
   nodes = {

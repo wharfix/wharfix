@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::string::String;
 
 use actix_web::{
-    middleware, web, App, FromRequest, HttpRequest, HttpResponse, HttpServer, Responder,
+    App, FromRequest, HttpRequest, HttpResponse, HttpServer, Responder, middleware, web,
 };
 
+use actix_web::HttpResponseBuilder;
 use actix_web::body::BoxBody;
 use actix_web::dev::Service;
-use actix_web::HttpResponseBuilder;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -31,7 +31,7 @@ use linereader::LineReader;
 use git2::build::CheckoutBuilder;
 use std::sync::RwLock;
 
-use futures::future::{err, ok, Ready};
+use futures::future::{Ready, err, ok};
 
 use regex::Regex;
 
@@ -50,7 +50,7 @@ use get_chunk::iterator::FileIter;
 use std::fs::File;
 
 #[cfg(feature = "mysql")]
-use mysql::{params, prelude::Queryable, Pool};
+use mysql::{Pool, params, prelude::Queryable};
 
 mod cli;
 mod errors;

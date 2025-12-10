@@ -1,7 +1,7 @@
 {
   git,
   nix,
-  nixosTest,
+  testers,
   runCommandNoCC,
   wharfix,
   indexFileName ? "not-default.nix",
@@ -23,7 +23,7 @@ let
     git commit -m "Initial commit"
   '';
 in
-nixosTest {
+testers.nixosTest {
   name = "arguments";
 
   nodes = {
