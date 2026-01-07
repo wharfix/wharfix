@@ -182,6 +182,10 @@ impl ManifestDelivery {
                 );
                 log::info!("looking for indexfile at {:?}", &fq);
 
+                let name = &info.name;
+                let fqs = &fq
+                    .to_str()
+                    .expect("Failed turning fqdn into string in ManifestDelivery.index");
                 let import_argset = if *INDEX_FILE_IS_ATTRSET
                     .get()
                     .expect("Failed unlocking INDEX_FILE_IS_ATTRSET in ManifestDelivery.index")
@@ -193,6 +197,7 @@ impl ManifestDelivery {
                     // isFunction like nix-build does
                     " {}"
                 };
+
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
                     // allow registering paths, maybe we need inputs to generate attributes
@@ -200,10 +205,7 @@ impl ManifestDelivery {
                     .arg("--eval")
                     .arg("-E")
                     .arg(format!(
-                        "builtins.hasAttr \"{}\" (import {}{import_argset})",
-                        &info.name,
-                        &fq.to_str()
-                            .expect("Failed turning fqdn into string in ManifestDelivery.index"),
+                        "builtins.hasAttr \"{name}\" (import {fqs}{import_argset})"
                     ))
                     .stdout(Stdio::piped())
                     .spawn()
