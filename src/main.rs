@@ -59,6 +59,7 @@ use std::sync::OnceLock;
 
 static ADD_NIX_GCROOTS: OnceLock<bool> = OnceLock::new();
 static INDEX_FILE_IS_BUILDABLE: OnceLock<bool> = OnceLock::new();
+static INDEX_FILE_IS_ATTRSET: OnceLock<bool> = OnceLock::new();
 static SERVE_TYPE: OnceLock<Option<ServeType>> = OnceLock::new();
 static TARGET_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
 static BLOB_CACHE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -181,16 +182,30 @@ impl ManifestDelivery {
                 );
                 log::info!("looking for indexfile at {:?}", &fq);
 
+                let name = &info.name;
+                let fqs = &fq
+                    .to_str()
+                    .expect("Failed turning fqdn into string in ManifestDelivery.index");
+                let import_argset = if *INDEX_FILE_IS_ATTRSET
+                    .get()
+                    .expect("Failed unlocking INDEX_FILE_IS_ATTRSET in ManifestDelivery.index")
+                {
+                    ""
+                } else {
+                    // The empty (nix) argset, provided as an argument for
+                    // nix-instantiation eval which will _not_ auto-detect
+                    // isFunction like nix-build does
+                    " {}"
+                };
+
                 let mut cmd = Command::new("nix-instantiate");
                 let child = cmd
+                    // allow registering paths, maybe we need inputs to generate attributes
+                    .arg("--read-write-mode")
                     .arg("--eval")
                     .arg("-E")
                     .arg(format!(
-                        "builtins.hasAttr \"{}\" (import {} {})",
-                        &info.name,
-                        &fq.to_str()
-                            .expect("Failed turning fqdn into string in ManifestDelivery.index"),
-                        "{}"
+                        "builtins.hasAttr \"{name}\" (import {fqs}{import_argset})"
                     ))
                     .stdout(Stdio::piped())
                     .spawn()
@@ -627,6 +642,7 @@ fn main() {
 
         ADD_NIX_GCROOTS.get_or_init(|| m.get_flag("addnixgcroots"));
         INDEX_FILE_IS_BUILDABLE.get_or_init(|| m.get_flag("indexfileisbuildable"));
+        INDEX_FILE_IS_ATTRSET.get_or_init(|| m.get_flag("indexfileisattrset"));
         SERVE_TYPE.get_or_init(|| serve_type);
         TARGET_DIR.get_or_init(|| {
             Some(fs::canonicalize(target_dir).expect("Failed to canonicalize target_dir in main"))

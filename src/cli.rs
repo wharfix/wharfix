@@ -59,6 +59,12 @@ pub fn build_cli() -> Command {
                 .required(false)
         )
         .arg(
+            arg!(indexfileisattrset: "Set if the provided index-file is not a function but a raw attrset of images")
+                .action(clap::ArgAction::SetTrue)
+                .long("index-file-is-attrset")
+                .required(false)
+        )
+        .arg(
             arg!(sshprivatekey:<SSHPRIVATEKEY> "Path to optional ssh private key file.")
                 .long("ssh-private-key")
                 .required(false)

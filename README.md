@@ -47,7 +47,9 @@ by setting the `--index-file-path <indexfilepath>` option.
 
 <!-- Clarify this -->
 `--index-file-is-buildable` can be used to set if the provided index-file is a
-valid nix entrypoint by itself (i.e. don't use internal drv-wrapper).
+
+`--index-file-is-attrset` can be used if the index does not take arguments but
+instead is a bare attrset of images
 
 ##### Authenticating over SSH
 
