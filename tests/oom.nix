@@ -52,7 +52,7 @@ testers.nixosTest {
             MemoryAccounting = true;
             MemoryMax = "256M";
             Environment = "RUST_BACKTRACE=1";
-            ExecStart = ''${wharfix}/bin/wharfix --repo ${repo} --port 8080'';
+            ExecStart = "${wharfix}/bin/wharfix --repo ${repo} --port 8080";
           };
         };
 
